@@ -1,0 +1,44 @@
+# ROS2 build
+build/
+install/
+log/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Editor
+.vscode/
+.idea/
+*~
+
+# Temporary / backup files
+*.backup
+*.backup_*
+*.KNOWN_GOOD
+*.KNOWN_GOOD_*
+*.failed*
+*.broken*
+*.with_texture_crash
+*.before_*
+*.after_*
+
+# Python cache
+.pytest_cache/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Generated TF graphs
+frames_*.gv
+frames_*.pdf
+
+# Extra backup files
+*_backup*
+*backup*
+
+# Workspace-root generated copies
+/make_arena.py
+/worlds/

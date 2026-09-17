@@ -1,0 +1,235 @@
+# ============================================================
+# M4 BRANCH MISSION
+#
+# Official mission:
+#   A = LEFT
+#   B = RIGHT
+#
+# The vehicle approaches a WIDE TWO-LANE ROAD.
+# The center white line separates the two lanes.
+# The A/B direction marker is placed on the center line.
+# ============================================================
+
+BRANCH_LEFT = -0.20
+BRANCH_RIGHT = 1.90
+
+BRANCH_TOP = 1.80
+BRANCH_CENTER = 1.10
+BRANCH_BOTTOM = 0.40
+
+
+# ============================================================
+# TWO-LANE ROAD
+# ============================================================
+
+# Upper boundary
+line(
+    "branch_upper",
+    BRANCH_LEFT,
+    BRANCH_TOP,
+    BRANCH_RIGHT,
+    BRANCH_TOP,
+    0.055,
+    WHITE
+)
+
+# Center divider
+line(
+    "branch_center_divider",
+    BRANCH_LEFT,
+    BRANCH_CENTER,
+    BRANCH_RIGHT,
+    BRANCH_CENTER,
+    0.055,
+    WHITE
+)
+
+# Lower boundary
+line(
+    "branch_lower",
+    BRANCH_LEFT,
+    BRANCH_BOTTOM,
+    BRANCH_RIGHT,
+    BRANCH_BOTTOM,
+    0.055,
+    WHITE
+)
+
+
+# ============================================================
+# A/B MARKER
+# ============================================================
+
+MARKER_X = 1.35
+MARKER_Y = BRANCH_CENTER
+
+
+# Pole
+box(
+    "branch_marker_pole",
+    MARKER_X,
+    MARKER_Y,
+    0.055,
+    0.055,
+    0.72,
+    GRAY,
+    0.36,
+    collision=True
+)
+
+
+# ============================================================
+# ACTIVE MARKER
+#
+# A = LEFT
+# B = RIGHT
+#
+# Change this value when testing.
+# ============================================================
+
+ACTIVE_BRANCH = "B"
+
+
+# ============================================================
+# A MARKER
+# ============================================================
+
+if ACTIVE_BRANCH == "A":
+
+    box(
+        "branch_A_board",
+        MARKER_X,
+        MARKER_Y,
+        0.08,
+        0.38,
+        0.38,
+        BLUE,
+        0.78,
+        collision=False
+    )
+
+    # Arrow pointing LEFT
+    box(
+        "branch_A_arrow",
+        MARKER_X,
+        MARKER_Y,
+        0.012,
+        0.16,
+        0.025,
+        WHITE,
+        0.78,
+        collision=False
+    )
+
+    box(
+        "branch_A_arrow_head",
+        MARKER_X,
+        MARKER_Y,
+        0.012,
+        0.055,
+        0.075,
+        WHITE,
+        0.78,
+        yaw=0.78,
+        collision=False
+    )
+
+
+# ============================================================
+# B MARKER
+# ============================================================
+
+else:
+
+    box(
+        "branch_B_board",
+        MARKER_X,
+        MARKER_Y,
+        0.08,
+        0.38,
+        0.38,
+        BLUE,
+        0.78,
+        collision=False
+    )
+
+    # Arrow pointing RIGHT
+    box(
+        "branch_B_arrow",
+        MARKER_X,
+        MARKER_Y,
+        0.012,
+        0.16,
+        0.025,
+        WHITE,
+        0.78,
+        collision=False
+    )
+
+    box(
+        "branch_B_arrow_head",
+        MARKER_X,
+        MARKER_Y,
+        0.012,
+        0.055,
+        0.075,
+        WHITE,
+        0.78,
+        yaw=-0.78,
+        collision=False
+    )
+
+
+# ============================================================
+# APPROACH FROM FIRST CURVE
+# ============================================================
+
+line(
+    "branch_entry_upper",
+    0.80,
+    1.10,
+    BRANCH_LEFT,
+    BRANCH_TOP,
+    0.055,
+    WHITE
+)
+
+line(
+    "branch_entry_lower",
+    0.80,
+    0.40,
+    BRANCH_LEFT,
+    BRANCH_BOTTOM,
+    0.055,
+    WHITE
+)
+
+
+# ============================================================
+# EXIT TOWARD ROUNDABOUT
+# ============================================================
+
+line(
+    "branch_exit_upper",
+    BRANCH_LEFT,
+    BRANCH_TOP,
+    -0.70,
+    0.65,
+    0.055,
+    WHITE
+)
+
+line(
+    "branch_exit_lower",
+    BRANCH_LEFT,
+    BRANCH_BOTTOM,
+    -0.70,
+    -0.25,
+    0.055,
+    WHITE
+)
+
+
+# ============================================================
+# END OF M4 BRANCH MISSION
+# ============================================================

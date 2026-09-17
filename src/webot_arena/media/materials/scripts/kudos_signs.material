@@ -1,0 +1,60 @@
+
+material KUDOS/M4_Left
+{
+    technique
+    {
+        pass
+        {
+            lighting on
+            ambient 1 1 1
+            diffuse 1 1 1
+
+            alpha_rejection greater_equal 128
+
+            texture_unit
+            {
+                texture m4_left.png
+            }
+        }
+    }
+}
+
+
+material KUDOS/M4_Right
+{
+    technique
+    {
+        pass
+        {
+            lighting on
+            ambient 1 1 1
+            diffuse 1 1 1
+
+            alpha_rejection greater_equal 128
+
+            texture_unit
+            {
+                texture m4_right.png
+            }
+        }
+    }
+}
+
+
+material KUDOS/Parking
+{
+    technique
+    {
+        pass
+        {
+            lighting on
+            ambient 1 1 1
+            diffuse 1 1 1
+
+            texture_unit
+            {
+                texture parking_sign.png
+            }
+        }
+    }
+}
