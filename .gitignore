@@ -42,3 +42,6 @@ frames_*.pdf
 # Workspace-root generated copies
 /make_arena.py
 /worlds/
+
+# Korean backup files
+*백업*
