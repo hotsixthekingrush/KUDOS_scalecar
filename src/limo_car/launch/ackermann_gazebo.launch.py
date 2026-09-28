@@ -37,6 +37,7 @@ def generate_launch_description():
         name='rviz2',
         output='screen',
         arguments=['-d', LaunchConfiguration('rvizconfig')],
+        parameters=[{'use_sim_time': True}],
     )
 
     # Position dafür, wo die Modelle herstellt werden
