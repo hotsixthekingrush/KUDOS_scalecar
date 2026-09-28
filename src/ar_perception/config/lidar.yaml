@@ -1,0 +1,35 @@
+lidar_perception:
+  ros__parameters:
+
+    # LiDAR mounting position relative to base_link
+    lidar_offset_x: 0.1236
+    lidar_offset_y: 0.0
+    # Self filter
+    self_x_min: -0.25
+    self_x_max: 0.25
+    self_y_min: -0.20
+    self_y_max: 0.20
+
+    # ROI
+    roi_x_min: 0.1
+    roi_x_max: 3.0
+
+    roi_y_min: -1.0
+    roi_y_max: 1.0
+
+    # Euclidean clustering
+    cluster_tolerance: 0.07
+    cluster_min_points: 3
+
+    # Cone classification
+    cone_radius_min: 0.035
+    cone_radius_max: 0.065
+    cone_residual_max: 0.015
+    cone_min_points: 4
+    
+    # Cone event detection
+    cone_event_min_total: 4
+    cone_event_min_left: 2
+    cone_event_min_right: 2
+    #Safety margin added to detected cone radius
+    cone_radius_margin: 0.02
