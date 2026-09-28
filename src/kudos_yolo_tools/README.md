@@ -43,6 +43,45 @@
 **핵심 원칙**: [1]~[4]는 실물 없이도 지금 당장 할 수 있습니다.
 실물을 기다리지 말고 지금 시작하세요.
 
+## 빠른 시작 — 팀 git 시뮬레이션 기준 (9/28)
+
+`config/targets.yaml`, 토픽, 로봇 이름은 이미 팀 git 의
+`limo_car/ackermann_gazebo.launch.py` + `webot_arena/limo_competition.world` 에 맞춰져 있다.
+
+```bash
+# 0) 토픽 이름 확인 (처음 한 번). /rgb/image_raw, /depth/image_raw 가 보여야 함
+ros2 launch limo_car ackermann_gazebo.launch.py
+ros2 topic list | grep -E "rgb|depth"
+
+# 1) 수집 (터미널 3개)
+ros2 launch limo_car ackermann_gazebo.launch.py
+ros2 launch kudos_yolo_tools collect_data.launch.py output_dir:=$HOME/yolo_data/dataset
+ros2 run teleop_twist_keyboard teleop_twist_keyboard      # 트랙을 여러 바퀴 몰기
+
+# 2) ★ 몇십 장 모이면 debug/ 이미지 확인 (아래 체크리스트)
+# 3) 분할 → 증강 → 학습
+cd ~/yolo_data
+python3 <src>/split_dataset.py --root dataset --names crosswalk,marker_left,marker_right,gate_bar,parking_sign,dynamic_car
+python3 <src>/image_augment.py --src dataset --dst dataset_aug --copies 2 --split train
+mkdir -p dataset_aug/images/val dataset_aug/labels/val
+cp dataset/images/val/* dataset_aug/images/val/ && cp dataset/labels/val/* dataset_aug/labels/val/
+python3 <src>/train_yolo.py --mode train --data dataset.yaml   # dataset.yaml 의 path 를 절대경로로
+
+# 4) 추론 확인
+ros2 launch kudos_yolo_tools yolo_detector_sim.launch.py weights:=$HOME/yolo_data/runs/detect/train/weights/best.pt
+rqt_image_view /perception/yolo_debug
+```
+
+### debug/ 이미지 체크리스트 (학습 전에 반드시)
+- [ ] 박스가 물체에 딱 맞는다 (전부 한쪽으로 밀려 있으면 `camera_frame`/`robot_model_name` 문제)
+- [ ] **`marker_left` 박스 안 화살표가 왼쪽, `marker_right` 가 오른쪽을 가리킨다**
+      반대로 보이면 `targets.yaml` 의 마커 `front: '+x'` 를 `'-x'` 로
+- [ ] 표지판 뒷면·옆면에는 박스가 없다
+- [ ] 터널 벽·주차 벽 뒤에 가려진 물체에는 박스가 없다
+- [ ] 차단기가 올라간 상태에서도 박스가 바를 따라간다
+
+로그에 클래스별 누적 개수가 50장마다 찍힌다. 마커 좌/우, 주차 표지판이 각각 200개 이상 모일 때까지 해당 구간을 여러 번 지나갈 것.
+
 ---
 
 ## [0] 설치

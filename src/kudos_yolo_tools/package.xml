@@ -17,6 +17,8 @@
   <depend>tf2_ros</depend>
   <depend>ar_msgs</depend>
   <exec_depend>ament_index_python</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>webot_arena</exec_depend>
   <exec_depend>python3-yaml</exec_depend>
   <exec_depend>python3-opencv</exec_depend>
   <exec_depend>python3-numpy</exec_depend>

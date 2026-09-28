@@ -103,7 +103,8 @@ class YoloDetectorNode(Node):
         # 깊이 실패 시 크기로 거리 역산할 때 쓰는 실제 높이 (m) — 이름:값  [실측필요]
         p('object_height_m', ['marker_left:0.16', 'marker_right:0.16',
                               'parking_sign:0.16', 'dynamic_car:0.20'])
-        p('ground_z', 0.0)          # base_link 기준 바닥 높이 (base_footprint 면 0)
+        p('ground_z', 0.0)          # base_link 기준 바닥 높이. ground_frame 을 찾으면 자동으로 덮어씀
+        p('ground_frame', 'base_footprint')   # 바닥에 붙은 프레임. '' 이면 ground_z 그대로 사용
         p('max_depth_m', 3.0)       # DaBai 깊이 유효거리 ~3m
         p('ema_alpha', 0.5)         # 1.0 = 필터 없음
         p('ema_reset_sec', 0.5)     # 이 시간 이상 안 보이면 필터 초기화
@@ -121,6 +122,8 @@ class YoloDetectorNode(Node):
         self.conf_per_class = self._parse_kv(g('conf_per_class'))
         self.obj_h = self._parse_kv(g('object_height_m'))
         self.ground_z = float(g('ground_z'))
+        self.ground_frame = g('ground_frame')
+        self.ground_z_ready = not self.ground_frame
         self.max_depth = float(g('max_depth_m'))
         self.ema_alpha = float(g('ema_alpha'))
         self.ema_reset = float(g('ema_reset_sec'))
@@ -204,6 +207,22 @@ class YoloDetectorNode(Node):
         self.T_base_cam = T
         return T
 
+    def update_ground_z(self):
+        """base_link 기준 바닥 높이를 TF 로 1회 계산 (LIMO 는 base_link 가 바닥보다 위에 있음)"""
+        if self.ground_z_ready:
+            return
+        try:
+            tf = self.tf_buffer.lookup_transform(self.base_frame, self.ground_frame, rclpy.time.Time())
+            self.ground_z = float(tf.transform.translation.z)
+            self.get_logger().info('바닥 높이(%s 기준 %s) = %.3f m'
+                                   % (self.base_frame, self.ground_frame, self.ground_z))
+        except TransformException:
+            self.get_logger().warn('TF %s->%s 없음 → ground_z=%.3f 사용'
+                                   % (self.base_frame, self.ground_frame, self.ground_z),
+                                   throttle_duration_sec=10.0)
+            return
+        self.ground_z_ready = True
+
     # ------------------------------------------------------------------
     def process(self):
         msg = self.latest_img
@@ -217,6 +236,7 @@ class YoloDetectorNode(Node):
         frame = self.bridge.imgmsg_to_cv2(msg, 'bgr8')
         h, w = frame.shape[:2]
         T_base_cam = self.get_T_base_cam(self.cam_frame_param or msg.header.frame_id)
+        self.update_ground_z()
 
         depth = None
         if self.latest_depth is not None:

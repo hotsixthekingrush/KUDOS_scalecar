@@ -141,6 +141,21 @@ def yolo_line(class_id, poly, img_w, img_h, fmt='polygon'):
     return '%d %s' % (class_id, ' '.join(coords))
 
 
+def is_front_facing(front, center, R_obj, cam_pos, min_cos=0.2):
+    """
+    카메라가 물체의 앞면 쪽에 있는지. front: '+x' '-x' '+y' '-y' (모델 좌표계).
+    min_cos=0.2 → 앞면 법선에서 약 78도 이내에서 볼 때만 True
+    """
+    axis = {'x': 0, 'y': 1, 'z': 2}[front[-1]]
+    sign = -1.0 if front.startswith('-') else 1.0
+    n = sign * np.asarray(R_obj)[:, axis]
+    v = np.asarray(cam_pos, dtype=float) - np.asarray(center, dtype=float)
+    d = np.linalg.norm(v)
+    if d < 1e-9:
+        return False
+    return float(n @ v) / d > min_cos
+
+
 # ---------------------------------------------------------------------
 # 가림(occlusion) 판정
 # ---------------------------------------------------------------------

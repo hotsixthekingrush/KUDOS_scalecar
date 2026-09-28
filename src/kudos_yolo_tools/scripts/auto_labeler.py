@@ -31,9 +31,12 @@ Gazebo 는 모든 물체의 3D 위치·크기를 알고 있다. 물체의 3D 박
   </plugin>
 
 [실행]
-  ros2 run kudos_yolo_tools auto_labeler.py --ros-args \
-     -p robot_model_name:=limo \
-     -p output_dir:=$HOME/yolo_data/dataset
+  ros2 run kudos_yolo_tools auto_labeler.py --ros-args -p output_dir:=$HOME/yolo_data/dataset
+
+  기본값은 팀 git 의 `ros2 launch limo_car ackermann_gazebo.launch.py` 기준:
+    토픽 /rgb/image_raw, /rgb/camera_info, /depth/image_raw, 로봇 엔티티 mbot,
+    카메라 frame depth_link (광학 좌표계, limo_car/gazebo/sensor.xacro 에서 rpy -90,0,-90)
+    ※ 토픽 이름은 `ros2 topic list | grep -E "rgb|depth"` 로 꼭 한 번 확인할 것
 """
 
 import os
@@ -85,6 +88,9 @@ def load_targets(path):
             'class_id': classes.index(t['class']),
             'size': [float(v) for v in t['size']],
             'offset': [float(v) for v in t.get('offset', [0, 0, 0])],
+            # 앞면 방향 (모델 좌표계 축). 지정하면 그 쪽에서 볼 때만 라벨을 붙인다.
+            # 표지판 뒷면은 그림이 좌우 반전되어 보이므로(좌회전 -> 우회전처럼) 반드시 필요
+            'front': t.get('front', ''),
         }
         if 'world_pose' in t:
             item['world_pose'] = [float(v) for v in t['world_pose']]
@@ -111,9 +117,9 @@ class AutoLabeler(Node):
         super().__init__('auto_labeler')
 
         p = self.declare_parameter
-        p('image_topic', '/camera/color/image_raw')
-        p('camera_info_topic', '/camera/color/camera_info')
-        p('depth_topic', '/camera/depth/image_raw')   # '' 이면 가림 검사 안 함
+        p('image_topic', '/rgb/image_raw')
+        p('camera_info_topic', '/rgb/camera_info')
+        p('depth_topic', '/depth/image_raw')          # '' 이면 가림 검사 안 함
         p('output_dir', './dataset')
         p('session', '')                 # 비우면 시각으로 자동 생성 (예: 0928_201530)
         p('targets_file', '')            # 비우면 패키지 config/targets.yaml
@@ -122,14 +128,16 @@ class AutoLabeler(Node):
         #   gazebo : 로봇 정답 위치(model_states) x 로봇->카메라 정적 TF   ← 권장
         #   tf     : world_frame -> 카메라 TF 를 직접 조회 (world TF 가 있을 때만)
         p('camera_pose_source', 'gazebo')
-        p('robot_model_name', 'limo')           # model_states 안의 로봇 이름 [확인필요]
-        p('robot_root_frame', 'base_footprint')  # 로봇 URDF 의 최상위 링크 [확인필요]
+        p('robot_model_name', 'mbot')           # ackermann_gazebo.launch.py 의 -entity
+        p('robot_root_frame', 'base_footprint')  # 로봇 URDF 의 최상위 링크
         p('world_frame', 'world')               # camera_pose_source=tf 일 때만 사용
-        p('camera_frame', '')                   # 비우면 이미지 header.frame_id 사용
+        # 이미지 header 의 frame(depth_camera_frame_optical)은 URDF/TF 에 없다.
+        # 같은 위치·같은 방향(광학 좌표계)인 depth_link 를 대신 쓴다. (limo_car/gazebo/sensor.xacro)
+        p('camera_frame', 'depth_link')         # '' 이면 이미지 header.frame_id 사용
         # 이미지 frame 이 *_optical_frame 이 아니라 카메라 "링크"(x 전방)라면 false
         p('camera_frame_is_optical', True)
 
-        p('save_every_n', 3)            # N프레임마다 1장 (연속 중복 줄이기)
+        p('save_every_n', 2)            # N프레임마다 1장 (Gazebo 카메라 10Hz → 5장/초)
         p('negative_ratio', 0.1)        # 대상이 하나도 없는 프레임 저장 확률
         p('max_occluded_ratio', 0.5)    # 이보다 많이 가려지면 라벨 제외
         p('occlusion_tol_m', 0.05)
@@ -252,7 +260,7 @@ class AutoLabeler(Node):
             R = T[:3, :3]
             origin = T[:3, 3]
         center = origin + R @ np.array(tgt['offset'])
-        return geo.cuboid_corners(center, tgt['size'], R)
+        return geo.cuboid_corners(center, tgt['size'], R), center, R
 
     # ------------------------------------------------------------------
     def image_cb(self, msg):
@@ -275,6 +283,7 @@ class AutoLabeler(Node):
             self.get_logger().error('이미지 변환 실패: %s' % e)
             return
         h, w = frame.shape[:2]
+        cam_pos = geo.inv_T(T_cam_world)[:3, 3]   # 카메라 월드 위치
 
         depth = None
         if self.depth is not None:
@@ -284,8 +293,11 @@ class AutoLabeler(Node):
 
         labels = []   # (class_id, poly)
         for tgt in self.targets:
-            corners = self.target_corners_world(tgt)
-            if corners is None:
+            got = self.target_corners_world(tgt)
+            if got is None:
+                continue
+            corners, center, R_obj = got
+            if tgt['front'] and not geo.is_front_facing(tgt['front'], center, R_obj, cam_pos):
                 continue
             pts_cam = geo.transform_points(T_cam_world, corners)
             uv = geo.project_points(self.K, pts_cam)
