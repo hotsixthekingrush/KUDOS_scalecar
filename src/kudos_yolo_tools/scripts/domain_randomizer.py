@@ -14,6 +14,9 @@ Gazebo 환경을 주기적으로 무작위로 바꿔서, 한 번의 수집으로
 1. 조명 밝기·색온도·방향   <- 대회장 조명이 연습 환경과 다를 위험 대비
 2. 표지판/차단기 위치·각도  <- 심사위원이 시설물을 옮길 수 있음(규정 명시)
 3. 동적 차량 위치          <- 회전교차로 미션 다양한 상황
+4. 좌/우 마커 교체          <- 매번 둘 중 하나만 등장 (실제 대회와 동일)
+
+※ 아래 기준 좌표는 예시. autorace_2026.world 의 실제 위치로 맞출 것 [확인필요]
 
 auto_labeler.py 와 동시에 실행하면, 무작위로 바뀐 장면들이
 자동 라벨과 함께 계속 저장된다.
@@ -34,11 +37,17 @@ from geometry_msgs.msg import Pose
 
 # 무작위로 위치를 바꿀 대상: (모델명, 기준위치x, 기준위치y, 흔들 범위 m)
 MOVABLE = [
-    ('sign_lane_change', 1.25,  1.00, 0.25),
+    ('marker',           1.25,  1.00, 0.25),   # 좌/우 마커 중 하나가 이 자리에 온다 (아래 MARKER_MODELS)
     ('sign_parking',     2.18, -1.59, 0.20),
     ('dynamic_car_1',   -1.64,  0.80, 0.0),   # 회전교차로 — 원 궤도 위에서 회전
     ('dynamic_car_2',   -1.64, -0.64, 0.0),
 ]
+
+# 좌/우 마커 모델 이름 — targets.yaml 과 같아야 함.
+# 실제 대회처럼 매번 둘 중 하나만 제자리에 두고, 나머지는 멀리 치운다.
+# (둘이 항상 같이 보이면 모델이 "좌/우 = 위치" 로 외워버릴 수 있다)
+MARKER_MODELS = ('sign_marker_left', 'sign_marker_right')
+HIDDEN_POS = (50.0, 50.0)
 
 # 회전교차로 중심 (동적 차량이 이 주위를 돈다)
 ROUNDABOUT_CENTER = (-1.64, 0.08)
@@ -93,6 +102,16 @@ class DomainRandomizer(Node):
                     x = ROUNDABOUT_CENTER[0] + ROUNDABOUT_RADIUS * math.cos(ang)
                     y = ROUNDABOUT_CENTER[1] + ROUNDABOUT_RADIUS * math.sin(ang)
                     self.set_pose(name, x, y, 0.05, ang + math.pi / 2)
+                elif name == 'marker':
+                    x = bx + random.uniform(-jitter, jitter)
+                    y = by + random.uniform(-jitter, jitter)
+                    yaw = random.uniform(-0.4, 0.4)
+                    shown = random.choice(MARKER_MODELS)
+                    for m in MARKER_MODELS:
+                        if m == shown:
+                            self.set_pose(m, x, y, 0.0, yaw)
+                        else:
+                            self.set_pose(m, HIDDEN_POS[0], HIDDEN_POS[1], 0.0, 0.0)
                 else:
                     x = bx + random.uniform(-jitter, jitter)
                     y = by + random.uniform(-jitter, jitter)
@@ -100,9 +119,9 @@ class DomainRandomizer(Node):
                     self.set_pose(name, x, y, 0.0, yaw)
 
         if self.do_light:
-            # Gazebo Classic에서 조명 변경은 서비스로 직접 지원되지 않으므로,
-            # 아래 안내대로 월드 파일의 <light> 값을 여러 벌 준비해 바꿔가며
-            # 수집하거나, gazebo_ros_light 플러그인을 별도로 쓰는 방식을 권장.
+            # 미구현. 조명 변화는 (1) image_augment.py 의 밝기/그림자 변형과
+            # (2) train_yolo.py 의 hsv_v augmentation 으로 대신한다.
+            # 월드 파일의 <light> 밝기를 2~3벌 바꿔 세션을 나눠 수집하면 더 좋다.
             pass
 
 

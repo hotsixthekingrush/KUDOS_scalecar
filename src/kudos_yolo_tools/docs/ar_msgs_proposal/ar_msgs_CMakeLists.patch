@@ -1,0 +1,9 @@
+--- ar_msgs/CMakeLists.txt
++++ ar_msgs/CMakeLists.txt
+@@ rosidl_generate_interfaces(${PROJECT_NAME}
+   "msg/LaneError.msg"
+   "msg/ColorZone.msg"
++  "msg/MissionObject.msg"
++  "msg/MissionObjectArray.msg"
+   DEPENDENCIES std_msgs
+ )

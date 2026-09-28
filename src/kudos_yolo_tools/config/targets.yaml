@@ -1,0 +1,40 @@
+# auto_labeler.py 가 라벨을 만들 대상 목록
+# 코드 수정 없이 이 파일만 고치면 된다.  (ros2 run ... -p targets_file:=<이 파일>)
+#
+# classes 순서 = 클래스 ID = dataset.yaml 의 names 순서 = MissionObject.msg 상수
+#
+# 각 target 항목
+#   class        : 위 classes 중 하나 (이름으로 지정 → 번호 실수 방지)
+#   gazebo_name  : 월드 파일 <model name="..."> 와 정확히 같아야 함  [확인필요]
+#   world_pose   : 3D 모델이 없는 것(노면 그림)은 [x, y, z, yaw] 로 직접 지정
+#   size         : 3D 박스 크기 [x, y, z] (m) — "모델 좌표계" 기준
+#                  표지판은 기둥 말고 판(面)만 감싸도록 잡을 것
+#   offset       : 모델 원점 -> 박스 중심 [x, y, z] (m), 모델 좌표계 기준
+#                  (예: 원점이 기둥 바닥이고 판 중심이 30cm 위면 [0, 0, 0.30])
+#
+# ★ size/offset 이 맞는지는 반드시 dataset/debug/ 이미지로 눈으로 확인할 것.
+#   표지판 판의 "얇은 축"이 x 인지 y 인지는 모델마다 다르다. 박스가 얇은 막대처럼
+#   나오면 size 의 x, y 를 서로 바꾸면 된다.
+
+classes:
+  - crosswalk       # 0  미션 2
+  - marker_left     # 1  미션 4 (A)
+  - marker_right    # 2  미션 4 (B)
+  - gate_bar        # 3  미션 7
+  - parking_sign    # 4  미션 8
+  - dynamic_car     # 5  미션 5
+
+targets:
+  # 노면 횡단보도 (autorace_2026.world 상단 우측)
+  - {class: crosswalk,    world_pose: [2.10, 3.15, 0.005, 0.0], size: [0.45, 0.60, 0.01]}
+
+  # 좌/우 마커 — 월드에 "별도 모델 2개"로 두는 것을 전제로 함.
+  # 한 모델의 텍스처만 바꾸는 방식이면 좌/우 라벨을 구분할 수 없으므로
+  # 좌/우 모델을 따로 만들고, domain_randomizer 가 한 번에 하나만 제자리에 두게 할 것.
+  - {class: marker_left,  gazebo_name: sign_marker_left,  size: [0.02, 0.16, 0.16], offset: [0, 0, 0.30]}
+  - {class: marker_right, gazebo_name: sign_marker_right, size: [0.02, 0.16, 0.16], offset: [0, 0, 0.30]}
+
+  - {class: parking_sign, gazebo_name: sign_parking,      size: [0.02, 0.16, 0.16], offset: [0, 0, 0.30]}
+  - {class: gate_bar,     gazebo_name: gate_bar,          size: [0.04, 1.00, 0.05], offset: [0, 0, 0.17]}
+  - {class: dynamic_car,  gazebo_name: dynamic_car_1,     size: [0.32, 0.22, 0.25], offset: [0, 0, 0.12]}
+  - {class: dynamic_car,  gazebo_name: dynamic_car_2,     size: [0.32, 0.22, 0.25], offset: [0, 0, 0.12]}

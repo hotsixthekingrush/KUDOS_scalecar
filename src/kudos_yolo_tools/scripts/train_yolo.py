@@ -39,12 +39,16 @@ def do_train(args):
     from ultralytics import YOLO
 
     # 전이학습: COCO 사전학습 가중치에서 시작
-    model = YOLO('yolov8n.pt')
+    #   detect  : yolov8n.pt      — 박스만. 가장 빠름
+    #   segment : yolov8n-seg.pt  — 박스 + 마스크. 차단기 기울기 각도를 마스크로 계산할 때
+    # auto_labeler 는 다각형 라벨을 저장하므로 두 방식 모두 같은 데이터로 학습 가능.
+    base = args.model or ('yolov8n-seg.pt' if args.task == 'segment' else 'yolov8n.pt')
+    model = YOLO(base)
 
     results = model.train(
         data=args.data,
         epochs=args.epochs,
-        imgsz=640,
+        imgsz=args.imgsz,
         batch=args.batch,
         device=args.device,
 
@@ -64,11 +68,14 @@ def do_train(args):
         mosaic=1.0,       # 여러 이미지를 합성 — 데이터 적을 때 효과 큼
         close_mosaic=10,  # 마지막 10에폭은 mosaic 끄고 실제 분포로 마무리
 
-        project='runs/detect',
-        name='train',
+        # 절대경로로 지정 — 최신 ultralytics 는 상대경로를 runs/<task>/ 아래에
+        # 한 번 더 중첩시켜서(runs/detect/runs/detect/...) 가중치 위치가 헷갈린다.
+        project=os.path.abspath(os.path.join('runs', args.task)),
+        name=args.name,
         exist_ok=True,
     )
-    print('\n학습 완료. 가중치: runs/detect/train/weights/best.pt')
+    save_dir = getattr(getattr(model, 'trainer', None), 'save_dir', None)
+    print('\n학습 완료. 가중치: %s' % os.path.join(str(save_dir), 'weights', 'best.pt'))
     return results
 
 
@@ -76,7 +83,7 @@ def do_val(args):
     from ultralytics import YOLO
 
     model = YOLO(args.weights)
-    metrics = model.val(data=args.data, imgsz=640, device=args.device)
+    metrics = model.val(data=args.data, imgsz=args.imgsz, device=args.device)
 
     map50 = metrics.box.map50
     map5095 = metrics.box.map
@@ -87,14 +94,24 @@ def do_val(args):
     print('=' * 55)
 
     # 클래스별 성능 — 어떤 클래스가 부족한지 알아야 데이터를 어디에 더 쓸지 판단됨
+    # ※ ap50 배열은 "val 에 등장한 클래스"만 담고 있다. 순서는 ap_class_index 를 따른다.
+    #   (enumerate 로 번호를 매기면 val 에 없는 클래스가 있을 때 이름이 밀린다)
     try:
         names = model.names
+        seen = set()
         print('\n[클래스별 mAP@0.5]  ← 낮은 클래스 위주로 데이터를 보강하세요')
-        for i, ap in enumerate(metrics.box.ap50):
+        for ci, ap in zip(metrics.box.ap_class_index, metrics.box.ap50):
+            ci = int(ci)
+            seen.add(ci)
             mark = '  ' if ap >= TARGET_MAP50 else '  ** 부족'
-            print(f'  {names[i]:<16} {ap:.4f}{mark}')
-    except Exception:
-        pass
+            print(f'  {names[ci]:<16} {ap:.4f}{mark}')
+        missing = sorted(set(names) - seen)
+        for ci in missing:
+            print(f'  {names[ci]:<16}   —      ** val 에 이 클래스가 없음 (측정 불가)')
+        if missing:
+            print('\n※ val 에 없는 클래스는 전체 mAP 에 반영되지 않았습니다. 그 클래스는 아직 검증 안 된 상태.')
+    except Exception as e:
+        print('클래스별 출력 실패:', e)
 
     if map50 >= TARGET_MAP50:
         print('\n목표 달성. TensorRT 변환 단계로 넘어가도 됩니다.')
@@ -114,7 +131,7 @@ def do_export(args):
     # 개발 PC(RTX 3060)에서 만든 엔진은 Jetson에서 작동하지 않는다.
     model.export(
         format='engine',
-        imgsz=640,
+        imgsz=args.imgsz,
         half=True,        # FP16 — 정확도 손실은 미미하고 속도는 크게 향상
         device=0,
         simplify=True,
@@ -131,6 +148,10 @@ def main():
     ap.add_argument('--epochs', type=int, default=100)
     ap.add_argument('--batch', type=int, default=16)
     ap.add_argument('--device', default='0', help='GPU 번호. CPU면 cpu')
+    ap.add_argument('--task', default='detect', choices=['detect', 'segment'])
+    ap.add_argument('--model', default='', help='시작 가중치 직접 지정 (기본: yolov8n / yolov8n-seg)')
+    ap.add_argument('--imgsz', type=int, default=640)
+    ap.add_argument('--name', default='train', help='runs/<task>/<name> 에 저장')
     args = ap.parse_args()
 
     if args.mode == 'train':
