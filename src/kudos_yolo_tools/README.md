@@ -53,10 +53,14 @@
 ros2 launch limo_car ackermann_gazebo.launch.py
 ros2 topic list | grep -E "rgb|depth"
 
-# 1) 수집 (터미널 3개)
+# 1) 수집 — 자동 모드 (터미널 2개, teleop 불필요, 600자세 ≈ 15~20분)
 ros2 launch limo_car ackermann_gazebo.launch.py
-ros2 launch kudos_yolo_tools collect_data.launch.py output_dir:=$HOME/yolo_data/dataset
-ros2 run teleop_twist_keyboard teleop_twist_keyboard      # 트랙을 여러 바퀴 몰기
+ros2 launch kudos_yolo_tools collect_data.launch.py mode:=auto output_dir:=$HOME/yolo_data/dataset
+#    로봇이 미션 물체 앞(config/viewpoints.yaml)으로 순간이동하며 찍는다. "완료" 로그가 나오면 Ctrl+C
+#    ★ 사진의 촬영 시각(시뮬 시간)으로 판단하므로 Gazebo 가 느려도 라벨이 어긋나지 않지만,
+#      카메라가 초당 5장 미만이면 수집이 매우 오래 걸린다 → Gazebo 를 NVIDIA 로 띄울 것:
+#      __NV_PRIME_RENDER_OFFLOAD=1 __GLX_VENDOR_LIBRARY_NAME=nvidia ros2 launch limo_car ackermann_gazebo.launch.py gui:=false
+#    손으로 운전하며 모으려면 mode:=drive + teleop_twist_keyboard
 
 # 2) ★ 몇십 장 모이면 debug/ 이미지 확인 (아래 체크리스트)
 # 3) 분할 → 증강 → 학습

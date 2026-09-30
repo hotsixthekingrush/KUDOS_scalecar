@@ -14,6 +14,7 @@ install(PROGRAMS
   scripts/yolo_geometry.py
   scripts/yolo_detector_node.py
   scripts/split_dataset.py
+  scripts/viewpoint_sampler.py
   scripts/auto_labeler.py
   scripts/domain_randomizer.py
   scripts/image_augment.py

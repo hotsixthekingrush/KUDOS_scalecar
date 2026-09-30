@@ -7,7 +7,7 @@ yolo_detector_node:
 
     image_topic: "/rgb/image_raw"          # [확인] ros2 topic list
     camera_info_topic: "/rgb/camera_info"
-    depth_topic: "/depth/image_raw"        # Gazebo 깊이는 컬러와 같은 센서라 정렬되어 있음
+    depth_topic: "/depth_camera/depth/image_raw"        # Gazebo 깊이는 컬러와 같은 센서라 정렬되어 있음
 
     base_frame: "base_link"
     ground_frame: "base_footprint"

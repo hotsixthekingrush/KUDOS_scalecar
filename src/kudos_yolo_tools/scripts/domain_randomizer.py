@@ -28,12 +28,14 @@ auto_labeler 로 수집하는 동안 Gazebo 장면을 주기적으로 바꿔서
 
 import math
 import random
+import time
 
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from gazebo_msgs.srv import SetEntityState
 from gazebo_msgs.msg import EntityState, ModelStates
+from std_msgs.msg import Bool
 
 
 # 서로 자리를 맞바꿀 두 모델 (targets.yaml 의 마커 이름과 같아야 함)
@@ -66,7 +68,11 @@ class DomainRandomizer(Node):
                                  qos_profile_sensor_data)
         if not self.cli.wait_for_service(timeout_sec=5.0):
             self.get_logger().warn('/gazebo/set_entity_state 없음 — 월드에 gazebo_ros_state 플러그인 확인')
+        # 바꾸는 동안 auto_labeler 저장을 멈춘다 (이미지와 라벨이 어긋나는 것 방지)
+        self.pub_enable = self.create_publisher(Bool, '/auto_labeler/enable', 10)
+        self.reenable_at = None
         self.create_timer(self.interval, self.randomize)
+        self.create_timer(0.05, self.check_reenable)
         self.get_logger().info('domain_randomizer 시작 (주기 %.1fs)' % self.interval)
 
     def states_cb(self, msg):
@@ -97,9 +103,21 @@ class DomainRandomizer(Node):
         p, q = pose.position, pose.orientation
         self.set_pose(name, p.x, p.y, p.z, q.x, q.y, q.z, q.w)
 
+    def set_labeler(self, on):
+        m = Bool()
+        m.data = bool(on)
+        self.pub_enable.publish(m)
+
+    def check_reenable(self):
+        if self.reenable_at is not None and time.monotonic() >= self.reenable_at:
+            self.reenable_at = None
+            self.set_labeler(True)
+
     def randomize(self):
         if self.base is None:
             return
+        self.set_labeler(False)
+        self.reenable_at = time.monotonic() + 0.8
 
         # 1) 마커 맞바꾸기
         a, b = SWAP_PAIR

@@ -34,7 +34,7 @@ Gazebo 는 모든 물체의 3D 위치·크기를 알고 있다. 물체의 3D 박
   ros2 run kudos_yolo_tools auto_labeler.py --ros-args -p output_dir:=$HOME/yolo_data/dataset
 
   기본값은 팀 git 의 `ros2 launch limo_car ackermann_gazebo.launch.py` 기준:
-    토픽 /rgb/image_raw, /rgb/camera_info, /depth/image_raw, 로봇 엔티티 mbot,
+    토픽 /rgb/image_raw, /rgb/camera_info, /depth_camera/depth/image_raw (9/29 실측), 로봇 엔티티 mbot,
     카메라 frame depth_link (광학 좌표계, limo_car/gazebo/sensor.xacro 에서 rpy -90,0,-90)
     ※ 토픽 이름은 `ros2 topic list | grep -E "rgb|depth"` 로 꼭 한 번 확인할 것
 """
@@ -51,6 +51,7 @@ import rclpy
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import Image, CameraInfo
+from std_msgs.msg import Bool
 from gazebo_msgs.msg import ModelStates
 from cv_bridge import CvBridge
 
@@ -119,7 +120,7 @@ class AutoLabeler(Node):
         p = self.declare_parameter
         p('image_topic', '/rgb/image_raw')
         p('camera_info_topic', '/rgb/camera_info')
-        p('depth_topic', '/depth/image_raw')          # '' 이면 가림 검사 안 함
+        p('depth_topic', '/depth_camera/depth/image_raw')          # '' 이면 가림 검사 안 함
         p('output_dir', './dataset')
         p('session', '')                 # 비우면 시각으로 자동 생성 (예: 0928_201530)
         p('targets_file', '')            # 비우면 패키지 config/targets.yaml
@@ -137,12 +138,15 @@ class AutoLabeler(Node):
         # 이미지 frame 이 *_optical_frame 이 아니라 카메라 "링크"(x 전방)라면 false
         p('camera_frame_is_optical', True)
 
-        p('save_every_n', 2)            # N프레임마다 1장 (Gazebo 카메라 10Hz → 5장/초)
+        p('save_every_n', 1)            # N프레임마다 1장 (Gazebo 카메라 10Hz → 5장/초)
         p('negative_ratio', 0.1)        # 대상이 하나도 없는 프레임 저장 확률
         p('max_occluded_ratio', 0.5)    # 이보다 많이 가려지면 라벨 제외
         p('occlusion_tol_m', 0.05)
         p('label_format', 'polygon')    # polygon | box
         p('draw_debug', True)
+        # 장면이 바뀌는 순간(순간이동·마커 교체)에는 이미지와 물체 위치가 어긋날 수 있다.
+        # viewpoint_sampler / domain_randomizer 가 이 토픽으로 저장을 잠시 멈춘다.
+        p('enable_topic', '/auto_labeler/enable')
 
         g = lambda n: self.get_parameter(n).value
         self.image_topic = g('image_topic')
@@ -163,6 +167,8 @@ class AutoLabeler(Node):
         self.occ_tol = float(g('occlusion_tol_m'))
         self.label_fmt = g('label_format')
         self.draw_debug = bool(g('draw_debug'))
+        self.enabled = True
+        self.enable_stamp_ns = 0   # 저장 재개 시각(시뮬 시간). 이보다 먼저 찍힌 사진은 버림
 
         self.class_names, self.targets = load_targets(tfile)
         self.get_logger().info('대상 %d개 로드: %s' % (len(self.targets), tfile))
@@ -185,6 +191,8 @@ class AutoLabeler(Node):
         self.create_subscription(CameraInfo, self.info_topic, self.info_cb, qos)
         self.create_subscription(ModelStates, '/gazebo/model_states', self.states_cb, qos)
         self.create_subscription(Image, self.image_topic, self.image_cb, qos)
+        if g('enable_topic'):
+            self.create_subscription(Bool, g('enable_topic'), self.enable_cb, 10)
         if self.depth_topic:
             self.create_subscription(Image, self.depth_topic, self.depth_cb, qos)
 
@@ -263,7 +271,19 @@ class AutoLabeler(Node):
         return geo.cuboid_corners(center, tgt['size'], R), center, R
 
     # ------------------------------------------------------------------
+    def enable_cb(self, msg):
+        on = bool(msg.data)
+        if on and not self.enabled:
+            # use_sim_time 이면 시뮬 시간. Gazebo 가 느려도 "재개 이후에 찍힌 사진"만 받는다.
+            self.enable_stamp_ns = self.get_clock().now().nanoseconds
+        self.enabled = on
+
     def image_cb(self, msg):
+        if not self.enabled:
+            return
+        stamp_ns = msg.header.stamp.sec * 1000000000 + msg.header.stamp.nanosec
+        if stamp_ns < self.enable_stamp_ns:
+            return   # 장면을 바꾸기 전에 찍혀서 늦게 도착한 사진
         self.frame_idx += 1
         if self.frame_idx % self.save_every_n != 0:
             return
@@ -286,6 +306,11 @@ class AutoLabeler(Node):
         cam_pos = geo.inv_T(T_cam_world)[:3, 3]   # 카메라 월드 위치
 
         depth = None
+        if self.depth_topic and self.depth is None:
+            self.get_logger().warn(
+                '깊이 영상 미수신(%s) — 가림 검사가 꺼진 채 저장 중. '
+                '`ros2 topic list | grep depth` 로 실제 토픽 이름 확인' % self.depth_topic,
+                throttle_duration_sec=5.0)
         if self.depth is not None:
             depth = self.depth
             if depth.shape[:2] != (h, w):
