@@ -41,7 +41,7 @@ import cv2
 
 import rclpy
 from rclpy.node import Node
-from rclpy.qos import qos_profile_sensor_data
+from rclpy.qos import qos_profile_sensor_data, QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 from sensor_msgs.msg import Image, CameraInfo
 from cv_bridge import CvBridge
 
@@ -154,14 +154,20 @@ class YoloDetectorNode(Node):
         self.last_stamp = None
         self.ema = {}   # class name -> (x, y, t)
         self.stat_n, self.stat_ms = 0, 0.0
+        self.win = []        # 최근 처리 기록 (처리 ms, 지연 s) — 주기 로그용
 
-        qos = qos_profile_sensor_data
-        self.create_subscription(CameraInfo, g('camera_info_topic'), self.info_cb, qos)
-        self.create_subscription(Image, self.image_topic, self.image_cb, qos)
+        # 영상은 큐 1장: 처리 중에 쌓인 옛 프레임을 나중에 하나씩 처리하는 일이 없도록.
+        # (rclpy 는 한 번 돌 때 구독당 메시지 1개만 꺼내므로, 큐가 5장이면 타이머와 번갈아
+        #  옛 프레임 5장을 차례로 처리 → 지연 수 초 + 결과가 몰려서 나감. 10/1 확인)
+        img_qos = QoSProfile(depth=1, reliability=ReliabilityPolicy.BEST_EFFORT,
+                             history=HistoryPolicy.KEEP_LAST, durability=DurabilityPolicy.VOLATILE)
+        self.create_subscription(CameraInfo, g('camera_info_topic'), self.info_cb, qos_profile_sensor_data)
+        self.create_subscription(Image, self.image_topic, self.image_cb, img_qos)
         if g('depth_topic'):
-            self.create_subscription(Image, g('depth_topic'), self.depth_cb, qos)
+            self.create_subscription(Image, g('depth_topic'), self.depth_cb, img_qos)
 
-        self.pub = self.create_publisher(MissionObjectArray, '/perception/mission_objects', 10)
+        # 결과도 최신 1개만 유지 (받는 쪽이 늦어도 옛 결과가 줄줄이 가지 않게)
+        self.pub = self.create_publisher(MissionObjectArray, '/perception/mission_objects', 1)
         if self.publish_debug:
             self.pub_dbg = self.create_publisher(Image, '/perception/yolo_debug', 2)
 
@@ -229,6 +235,7 @@ class YoloDetectorNode(Node):
         if msg is None or msg.header.stamp == self.last_stamp:
             return
         self.last_stamp = msg.header.stamp
+        t_start = time.time()
         if self.K is None:
             self.get_logger().warn('CameraInfo 미수신', throttle_duration_sec=5.0)
             return
@@ -252,12 +259,10 @@ class YoloDetectorNode(Node):
         res = self.model.predict(frame, **kw)[0]
         self.stat_ms += (time.time() - t0) * 1000.0
         self.stat_n += 1
-        if self.stat_n % 100 == 0:
-            self.get_logger().info('추론 평균 %.1f ms' % (self.stat_ms / self.stat_n))
 
         dets = self.collect(res)
         out = MissionObjectArray()
-        out.header = msg.header
+        out.header.stamp = msg.header.stamp          # 원본 영상 촬영 시각 그대로 (판단 쪽 지연 보정용)
         out.header.frame_id = self.base_frame
         now = time.time()
         dbg = frame.copy() if self.publish_debug else None
@@ -295,6 +300,20 @@ class YoloDetectorNode(Node):
             m = self.bridge.cv2_to_imgmsg(dbg, 'bgr8')
             m.header = msg.header
             self.pub_dbg.publish(m)
+        self.log_stats(msg, t_start)
+
+    def log_stats(self, msg, t_start):
+        """20장마다: 노드 처리 시간(벽시계 ms)과 발행 시점의 영상 지연(age, 노드 시계 기준 s)"""
+        proc_ms = (time.time() - t_start) * 1000.0
+        age = (self.get_clock().now() - rclpy.time.Time.from_msg(msg.header.stamp)).nanoseconds * 1e-9
+        self.win.append((proc_ms, age))
+        if len(self.win) >= 20:
+            p = [w[0] for w in self.win]
+            a = [w[1] for w in self.win]
+            self.get_logger().info('최근 %d장 | 처리 평균 %.1f ms (추론만 누적 %.1f ms) | 지연 age 평균 %.2f s, 최대 %.2f s'
+                                   % (len(self.win), sum(p) / len(p), self.stat_ms / self.stat_n,
+                                      sum(a) / len(a), max(a)))
+            self.win = []
 
     def collect(self, res):
         """YOLO 결과 -> 클래스별 문턱 적용, 단일 인스턴스 클래스는 최고 신뢰도 1개만"""
