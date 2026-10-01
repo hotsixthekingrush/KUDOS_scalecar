@@ -102,7 +102,7 @@ class MissionMotionController(Node):
 
         self.barrier_hinge_x = 3.55
         self.barrier_hinge_y = -3.12
-        self.barrier_hinge_z = 0.48
+        self.barrier_hinge_z = 0.16
 
         self.barrier_length = 1.25
 
