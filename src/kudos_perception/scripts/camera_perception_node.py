@@ -217,28 +217,30 @@ class CameraPerceptionNode(Node):
         def poly_x(fit, y):
             return fit[0] * y * y + fit[1] * y + fit[2]
 
-        has_l, has_r = left_fit is not None, right_fit is not None
         half_lane_px = (self.lane_width_m / 2.0) / self.m_per_px_x
+        has_l, has_r = left_fit is not None, right_fit is not None
 
         if has_l and has_r:
-            center_px = (poly_x(left_fit, y_eval) + poly_x(right_fit, y_eval)) / 2.0
-            # 중앙선 다항식 = 좌우 평균
-            cfit = (left_fit + right_fit) / 2.0
+            # 두 선을 각각 차선 중앙 쪽으로 "선에 수직으로" 반 차선 이동한 뒤 평균
+            cfit = (self._shift_fit(left_fit, +half_lane_px) +
+                    self._shift_fit(right_fit, -half_lane_px)) / 2.0
             conf = min(1.0, (n_left + n_right) / (2.0 * self.min_fit * 2))
         elif has_l:
-            center_px = poly_x(left_fit, y_eval) + half_lane_px
-            cfit = left_fit.copy()
-            cfit[2] += half_lane_px
+            cfit = self._shift_fit(left_fit, +half_lane_px)
             out.single_lane_estimated = True
             conf = min(0.6, n_left / (self.min_fit * 2.0))
         elif has_r:
-            center_px = poly_x(right_fit, y_eval) - half_lane_px
-            cfit = right_fit.copy()
-            cfit[2] -= half_lane_px
+            cfit = self._shift_fit(right_fit, -half_lane_px)
             out.single_lane_estimated = True
             conf = min(0.6, n_right / (self.min_fit * 2.0))
         else:
             return out, dbg          # valid=False 로 반환. 판단 모듈이 fail-safe 처리.
+        center_px = poly_x(cfit, y_eval)
+
+        if dbg is not None:
+            ys = np.linspace(0, h - 1, 30)
+            pts = np.int32(np.c_[poly_x(cfit, ys), ys])
+            cv2.polylines(dbg, [pts], False, (0, 255, 255), 2)
 
         # ---------- 픽셀 -> 미터 환산 ----------
         # 양수 = 차선 중앙이 로봇보다 왼쪽 (BEV 에서 x 가 작을수록 왼쪽)
@@ -285,50 +287,123 @@ class CameraPerceptionNode(Node):
 
         return out, dbg
 
+    def _shift_fit(self, fit, dist_px):
+        """
+        차선 다항식 x(y) 를 진행 방향 기준 오른쪽(+)/왼쪽(-)으로 dist_px 만큼 "수직" 이동한
+        곡선을 다시 2차식으로 맞춘다. (가로로만 밀면 선이 기울어진 커브에서 폭이 좁아짐)
+        BEV: x 오른쪽, y 아래(=후방). 전방 단위벡터 f=(-x', -1)/n, 오른쪽 법선 r=(1, -x')/n
+        """
+        h = self.bev_h
+        ys = np.linspace(0, h - 1, 40)
+        xs = fit[0] * ys * ys + fit[1] * ys + fit[2]
+        d = 2 * fit[0] * ys + fit[1]
+        n = np.sqrt(1.0 + d * d)
+        xs2 = xs + dist_px / n
+        ys2 = ys - dist_px * d / n
+        return np.polyfit(ys2, xs2, 2)
+
     def _sliding_window(self, mask, bev_img):
+        """
+        [v2] 두 창이 같은 선을 나눠 잡는 문제 수정
+          - 시작점은 화면 아래 1/3 에서만 찾고, 한쪽에 선이 충분하지 않으면 그쪽은 "없음"
+          - 왼쪽 선에 이미 쓰인 픽셀은 오른쪽 선에서 제외 (반대도 동일)
+          - 두 곡선이 차선 폭의 절반보다 가까우면 같은 선 → 하나만 남기고, 화면 아래에서의
+            위치로 왼쪽/오른쪽 선을 판정
+        """
         h, w = mask.shape
-        hist = np.sum(mask[h // 2:, :], axis=0)
         mid = w // 2
-
-        left_base = int(np.argmax(hist[:mid])) if hist[:mid].max() > 0 else mid // 2
-        right_base = int(np.argmax(hist[mid:]) + mid) if hist[mid:].max() > 0 else mid + mid // 2
-
         win_h = h // self.n_windows
         nz = mask.nonzero()
         nzy, nzx = np.array(nz[0]), np.array(nz[1])
+        used = np.zeros(len(nzy), dtype=bool)
 
-        lx, rx = left_base, right_base
-        l_inds, r_inds = [], []
+        # [v2.1] 시작점: 먼저 화면 아래 1/3 에서 찾고, 없으면 2/3, 전체로 넓힌다.
+        #   라바콘 등이 로봇 바로 앞의 선을 가리면 선이 BEV 위쪽에만 남기 때문 (10/1 Gazebo 확인)
+        def pick_band(frac):
+            rows = mask[int(h * frac):, :]
+            hist = np.sum(rows > 0, axis=0)
+            min_base = max(3, int(0.02 * rows.shape[0]))
+
+            def pick(lo, hi):
+                seg = hist[lo:hi]
+                if seg.size == 0 or seg.max() < min_base:
+                    return None
+                return int(np.argmax(seg) + lo)
+            return hist, pick(0, mid), pick(mid, w)
+
+        for frac in (2.0 / 3.0, 1.0 / 3.0, 0.0):
+            hist, lx, rx = pick_band(frac)
+            if lx is not None or rx is not None:
+                break
+
+        def start_window(x0):
+            """x0 근처 선 픽셀 중 가장 아래(로봇 쪽) 것이 들어 있는 창 번호 — 가려진 아래 창은 건너뜀"""
+            if x0 is None:
+                return 0
+            sel = np.abs(nzx - x0) <= self.win_margin
+            if not sel.any():
+                return 0
+            return max(0, min(self.n_windows - 1, (h - 1 - int(nzy[sel].max())) // win_h))
 
         dbg = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR) if self.publish_debug else None
 
-        for i in range(self.n_windows):
-            y_lo, y_hi = h - (i + 1) * win_h, h - i * win_h
-            xl_lo, xl_hi = lx - self.win_margin, lx + self.win_margin
-            xr_lo, xr_hi = rx - self.win_margin, rx + self.win_margin
+        def track(x0, color):
+            if x0 is None:
+                return np.array([], dtype=int)
+            inds, x = [], x0
+            lost = 0
+            for i in range(start_window(x0), self.n_windows):
+                y_lo, y_hi = h - (i + 1) * win_h, h - i * win_h
+                x_lo, x_hi = x - self.win_margin, x + self.win_margin
+                if dbg is not None:
+                    cv2.rectangle(dbg, (x_lo, y_lo), (x_hi, y_hi), color, 1)
+                g = ((nzy >= y_lo) & (nzy < y_hi) & (nzx >= x_lo) & (nzx < x_hi) & ~used).nonzero()[0]
+                if len(g) > self.min_recenter:
+                    x = int(np.mean(nzx[g]))
+                    lost = 0
+                else:
+                    lost += 1
+                    if lost >= 3:      # 선이 끊기면 더 올라가며 엉뚱한 선을 줍지 않도록 중단
+                        break
+                inds.append(g)
+            inds = np.concatenate(inds) if inds else np.array([], dtype=int)
+            used[inds] = True
+            return inds
 
-            if dbg is not None:
-                cv2.rectangle(dbg, (xl_lo, y_lo), (xl_hi, y_hi), (0, 255, 0), 1)
-                cv2.rectangle(dbg, (xr_lo, y_lo), (xr_hi, y_hi), (0, 255, 0), 1)
-
-            gl = ((nzy >= y_lo) & (nzy < y_hi) & (nzx >= xl_lo) & (nzx < xl_hi)).nonzero()[0]
-            gr = ((nzy >= y_lo) & (nzy < y_hi) & (nzx >= xr_lo) & (nzx < xr_hi)).nonzero()[0]
-            l_inds.append(gl)
-            r_inds.append(gr)
-
-            if len(gl) > self.min_recenter:
-                lx = int(np.mean(nzx[gl]))
-            if len(gr) > self.min_recenter:
-                rx = int(np.mean(nzx[gr]))
-
-        l_inds = np.concatenate(l_inds) if l_inds else np.array([], dtype=int)
-        r_inds = np.concatenate(r_inds) if r_inds else np.array([], dtype=int)
+        # 픽셀이 더 많은 쪽 시작점부터 먼저 추적 (그 픽셀을 다른 쪽이 못 쓰게)
+        def base_strength(x0):
+            return -1 if x0 is None else hist[max(0, x0 - 5):x0 + 5].sum()
+        if base_strength(lx) >= base_strength(rx):
+            l_inds = track(lx, (0, 255, 0)); r_inds = track(rx, (0, 200, 255))
+        else:
+            r_inds = track(rx, (0, 200, 255)); l_inds = track(lx, (0, 255, 0))
 
         left_fit = right_fit = None
         if len(l_inds) > self.min_fit:
             left_fit = np.polyfit(nzy[l_inds], nzx[l_inds], 2)
         if len(r_inds) > self.min_fit:
             right_fit = np.polyfit(nzy[r_inds], nzx[r_inds], 2)
+
+        # 같은 선을 둘로 잡았는지 검사
+        if left_fit is not None and right_fit is not None:
+            ys = np.linspace(h * 0.3, h - 1, 10)
+            gap = np.polyval(right_fit, ys) - np.polyval(left_fit, ys)
+            lane_px = self.lane_width_m / self.m_per_px_x
+            if np.median(gap) < 0.5 * lane_px:
+                if len(l_inds) >= len(r_inds):
+                    right_fit, r_inds = None, np.array([], dtype=int)
+                else:
+                    left_fit, l_inds = None, np.array([], dtype=int)
+
+        # 한 줄만 남았으면, 화면 아래쪽에서 로봇 중심의 왼쪽/오른쪽 어디에 있는지로 판정
+        if (left_fit is None) != (right_fit is None):
+            fit = left_fit if left_fit is not None else right_fit
+            inds = l_inds if left_fit is not None else r_inds
+            x_bottom = np.polyval(fit, h - 1)
+            if x_bottom < mid:
+                left_fit, right_fit, l_inds, r_inds = fit, None, inds, np.array([], dtype=int)
+            else:
+                left_fit, right_fit, l_inds, r_inds = None, fit, np.array([], dtype=int), inds
 
         if dbg is not None:
             if len(l_inds) > 0:
