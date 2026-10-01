@@ -1,0 +1,48 @@
+# 카메라 인지 노드 파라미터 — Gazebo(limo_competition.world) 전용
+# 카메라: base_link 앞 0.1m, 바닥 위 0.215m, 수평, 640x480, FOV 80°
+# 차선 폭 0.80m 트랙 기준으로 계산한 값 (9/30). 실차에서는 camera_perception.yaml 재튜닝
+# 실제 트랙/카메라에 맞춰 조정할 값은 [튜닝필요] 표시
+
+camera_perception_node:
+  ros__parameters:
+    image_topic: "/rgb/image_raw"
+    publish_debug: true
+
+    # [튜닝필요] IPM 사다리꼴 4점 (좌상x,좌상y, 우상x,우상y, 좌하x,좌하y, 우하x,우하y)
+    # rqt_image_view 로 실제 카메라 화면을 보며 노면의 직사각형 영역을 지정할 것
+    ipm_src: [91.2, 322.0, 548.8, 322.0, -188.5, 422.2, 828.5, 422.2]
+    # = 로봇(base_link) 앞 0.55m~1.10m, 좌우 ±0.6m 노면. 화면 밖 좌표(음수, 640 초과)는 정상
+
+    # [튜닝필요] 위 사다리꼴이 담는 실제 노면 크기. px->m 환산의 근거이므로 정확히 측정할 것
+    bev_width_px: 342
+    bev_length_px: 157
+    bev_width_m: 1.20
+    bev_length_m: 0.55
+
+    # [튜닝필요] 노란 실선 HSV 범위. 대회장 조명에서 재측정 필수
+    lane_hsv_lower: [15, 80, 80]
+    lane_hsv_upper: [35, 255, 255]
+
+    # [튜닝필요] 실제 트랙 차선 폭 — 판단팀 요청사항, 실측 후 반영
+    lane_width_m: 0.80
+
+    # 곡률 전방주시 거리. 제어팀과 합의 필요
+    curvature_lookahead_m: 0.30
+
+    n_windows: 9
+    window_margin_px: 50
+    min_pixels_recenter: 40
+    min_pixels_fit: 300
+
+    # --- 미션 1 색상 구역 ---
+    zone_roi_top_ratio: 0.88        # 범퍼 바로 앞만 보도록 좁게
+    zone_roi_x_margin_ratio: 0.30
+    red_hsv1_lower: [0, 110, 80]
+    red_hsv1_upper: [10, 255, 255]
+    red_hsv2_lower: [170, 110, 80]
+    red_hsv2_upper: [180, 255, 255]
+    blue_hsv_lower: [100, 110, 60]
+    blue_hsv_upper: [130, 255, 255]
+    zone_enter_ratio: 0.35          # Hysteresis 진입 문턱
+    zone_exit_ratio: 0.15           # Hysteresis 이탈 문턱 (더 낮게)
+    zone_confirm_frames: 3
