@@ -1,0 +1,11 @@
+# Gazebo 시뮬레이터용 덮어쓰기 값.
+# params.yaml 을 먼저 읽고, 여기 적힌 항목만 교체된다.
+mission_supervisor:
+  ros__parameters:
+    use_sim_time: true
+
+    wheel_base: 0.24          # Gazebo 모델 앞뒤 바퀴 x = +-0.12 (실차 0.2)
+    max_steer: 0.5236         # Gazebo ackermann 플러그인 조향 한계 30도
+
+    parking:
+      turn_offset: 0.42       # 시뮬 최소회전반경 = 0.24 / tan(30도) = 0.416
