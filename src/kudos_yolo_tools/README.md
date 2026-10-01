@@ -13,7 +13,7 @@
         ↓
 [2] 이미지 augmentation으로 데이터 불리기 (train 만)
         ↓
-[3] YOLOv8n 전이학습 (개발 PC, RTX 3060)
+[3] YOLOv8n 전이학습 (개발 PC, RTX 4060)
         ↓
 [4] validation mAP 확인 -> 부족하면 [1]로 돌아가 보강
         ↓
@@ -49,7 +49,7 @@
 `limo_car/ackermann_gazebo.launch.py` + `webot_arena/limo_competition.world` 에 맞춰져 있다.
 
 ```bash
-# 0) 토픽 이름 확인 (처음 한 번). /rgb/image_raw, /depth/image_raw 가 보여야 함
+# 0) 토픽 이름 확인 (처음 한 번). /rgb/image_raw, /depth_camera/depth/image_raw 가 보여야 함
 ros2 launch limo_car ackermann_gazebo.launch.py
 ros2 topic list | grep -E "rgb|depth"
 
@@ -90,11 +90,22 @@ rqt_image_view /perception/yolo_debug
 
 ## [0] 설치
 
+**PC (Ubuntu 22.04 / ROS2 Humble, Gazebo 개발용)**
 ```bash
-pip install ultralytics opencv-python pyyaml
+pip install ultralytics "numpy<2" "opencv-python<4.12" pyyaml
 # ROS2 쪽
 sudo apt install ros-humble-cv-bridge ros-humble-gazebo-msgs ros-humble-tf2-ros
 sudo apt install ros-humble-message-filters
+```
+> ⚠️ 버전 고정 이유: 그냥 `pip install ultralytics` 하면 numpy 2.x 가 깔리는데,
+> apt 로 설치된 `cv_bridge` 는 numpy 1.x 기준으로 빌드돼 있어서 노드 실행 시 import 에러가 난다.
+> `opencv-python` 4.12 이상은 numpy 2 를 요구하므로 함께 묶어둔다.
+> 이미 설치했다면 위 명령을 다시 실행하면 버전이 내려간다.
+
+**Jetson (LIMO Pro / ROS2 Humble)**
+```bash
+pip3 install ultralytics "numpy<2" pyyaml
+pip3 uninstall -y opencv-python   # ultralytics 가 같이 깔아버림 — JetPack 기본 OpenCV(CUDA) 를 써야 함
 ```
 
 ---
@@ -277,7 +288,7 @@ python3 train_yolo.py --mode export --weights best.pt
 ```
 
 **왜 Jetson에서 해야 하나**: TensorRT 엔진은 그 GPU의 아키텍처에
-맞춰 최적화됩니다. 개발 PC(RTX 3060)에서 만든 `.engine` 파일은
+맞춰 최적화됩니다. 개발 PC(RTX 4060)에서 만든 `.engine` 파일은
 Jetson에서 로드조차 안 됩니다.
 
 변환 후 **mAP를 다시 측정**하세요. FP16으로 정밀도를 낮췄을 때
