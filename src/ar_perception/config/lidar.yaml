@@ -33,3 +33,45 @@ lidar_perception:
     cone_event_min_right: 2
     #Safety margin added to detected cone radius
     cone_radius_margin: 0.02
+    cone_side_deadband: 0.05
+
+    #ros__parameters
+    tracking_max_distance: 0.30
+    dynamic_speed_threshold: 0.10
+    tracking_velocity_alpha: 0.5
+    dynamic_confirm_frames: 3
+
+    roundabout_radius_min: 0.18
+    roundabout_radius_max: 0.38
+    roundabout_residual_max: 0.012 # cluster의 점들이 원에 얼마나 잘 맞는지 (작을수록 원 둘레에 잘 모여있음)
+    roundabout_min_points: 8
+
+    # gate
+    gate_length_min: 0.28
+    gate_length_max: 1.50
+    gate_residual_max: 0.04
+    gate_angle_min_deg: 70.0
+
+    gate_x_min: 0.20
+    gate_x_max: 2.50
+    gate_y_abs_max: 0.60
+
+    gate_min_points: 5
+
+    #parking
+    parking_x_min: 0.0
+    parking_x_max: 2.0
+    parking_y_min: 0.20
+    parking_y_max: 1.20
+
+    parking_wall_min_length: 0.15
+    parking_wall_residual_max: 0.04
+    parking_wall_min_points: 5
+
+    parking_boundary_merge_distance: 0.25
+    parking_boundary_alpha: 0.2
+    parking_gap_min_length: 0.60
+    parking_gap_confirm_frames: 3
+    parking_max_boundaries: 10
+    parking_gap_match_distance: 0.20
+    parking_boundary_stale_frames: 3

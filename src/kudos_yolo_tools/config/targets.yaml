@@ -1,0 +1,43 @@
+# auto_labeler.py 가 라벨을 만들 대상 목록
+# ★ webot_arena/worlds/limo_competition.world (팀 git, 9/28 main) 기준으로 맞춤
+#   월드 파일이 바뀌면 이 파일도 같이 고칠 것.
+#
+# classes 순서 = 클래스 ID = dataset.yaml 의 names 순서 = MissionObject.msg 상수
+#
+# 각 target 항목
+#   class        : 위 classes 중 하나
+#   gazebo_name  : 월드 파일 <model name="...">
+#   world_pose   : 3D 모델이 아닌 것(노면)은 [x, y, z, yaw] 직접 지정
+#   size         : 3D 박스 크기 [x, y, z] (m) — 모델 좌표계 기준
+#   offset       : 모델 원점 -> 박스 중심 [x, y, z] (m), 모델 좌표계 기준
+#   front        : 앞면 방향 축 ('+x' 등). 뒤에서 보면 라벨 안 붙임 (표지판 필수 —
+#                  뒷면은 그림이 좌우 반전돼서 좌회전 마커가 우회전처럼 보임)
+
+classes:
+  - crosswalk       # 0  미션 2
+  - marker_left     # 1  미션 4 (A)
+  - marker_right    # 2  미션 4 (B)
+  - gate_bar        # 3  미션 7
+  - parking_sign    # 4  미션 8
+  - dynamic_car     # 5  미션 5
+
+targets:
+  # 횡단보도: 월드에는 흰 줄 7개(crosswalk_1~7, x=0.32~0.98, y=3.95, 줄 크기 0.06x0.68)로 있음
+  #   → 7줄 전체를 감싸는 하나의 박스로 라벨링
+  - {class: crosswalk,    world_pose: [0.65, 3.95, 0.003, 0.0], size: [0.72, 0.68, 0.01]}
+
+  # 갈림길 마커: 파란 원판(disc) 앞에 붙은 얇은 텍스처 판이 실제 그림
+  #   m4_sign_start_texture = KUDOS/M4_Right,  m4_sign_end_texture = KUDOS/M4_Left
+  #   (domain_randomizer 가 두 텍스처 위치를 무작위로 맞바꾼다 → 위치로 외우는 것 방지)
+  - {class: marker_right, gazebo_name: m4_sign_start_texture, size: [0.01, 0.23, 0.23], front: '+x'}
+  - {class: marker_left,  gazebo_name: m4_sign_end_texture,   size: [0.01, 0.23, 0.23], front: '+x'}
+
+  # 주차 표지판 판 (기둥 제외), 0.36m 정사각
+  - {class: parking_sign, gazebo_name: parking_sign_panel,    size: [0.018, 0.36, 0.36], front: '+x'}
+
+  # 차단기 바 — mission_motion_controller.py 가 회전시킴. 모델 원점 = 바 중심
+  - {class: gate_bar,     gazebo_name: moving_barrier_arm,    size: [0.07, 1.10, 0.07]}
+
+  # 회전교차로 차량 — 몸체(0.32x0.20x0.18, 중심 z=0.125) + 바퀴까지 감싸도록
+  - {class: dynamic_car,  gazebo_name: roundabout_dynamic_obstacle_1, size: [0.32, 0.26, 0.21], offset: [0, 0, 0.11]}
+  - {class: dynamic_car,  gazebo_name: roundabout_dynamic_obstacle_2, size: [0.32, 0.26, 0.21], offset: [0, 0, 0.11]}

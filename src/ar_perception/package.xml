@@ -13,6 +13,7 @@
   <depend>geometry_msgs</depend>
   <depend>visualization_msgs</depend>
   <depend>ar_msgs</depend>
+  <depend>nav_msgs</depend>
 
   <exec_depend>python3-scipy</exec_depend>
   <exec_depend>python3-numpy</exec_depend>

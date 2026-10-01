@@ -14,6 +14,11 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/ObstacleArray.msg"
   "msg/WallSegment.msg"
   "msg/WallArray.msg"
+  "msg/LaneError.msg"
+  "msg/ColorZone.msg"
+  "msg/MissionObject.msg"
+  "msg/MissionObjectArray.msg"
+  "msg/ParkingGap.msg"
   DEPENDENCIES std_msgs
 )
 

@@ -1,0 +1,19 @@
+# YOLOv8 데이터셋 설정 파일
+# 2026 AUTO RACE 스케일카 대회 - 카메라 인지 파트
+
+# 데이터셋 루트 경로 (이 yaml 파일 기준 상대경로 또는 절대경로)
+path: ./dataset_aug
+
+train: images/train
+val: images/val
+
+# 클래스 정의 — auto_labeler.py 의 CLASS_NAMES 와 순서가 반드시 일치해야 함
+names:
+  0: crosswalk        # 미션 2 - 횡단보도
+  1: marker_left      # 미션 4 - 좌회전 마커 (A)
+  2: marker_right     # 미션 4 - 우회전 마커 (B)
+  3: gate_bar         # 미션 7 - 차단기 바 (단일 클래스, 각도는 후처리로 계산)
+  4: parking_sign     # 미션 8 - 주차 표지판
+  5: dynamic_car      # 미션 5 - 회전교차로 동적 차량
+
+nc: 6
