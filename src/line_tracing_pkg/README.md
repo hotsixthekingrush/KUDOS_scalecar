@@ -1,3 +1,21 @@
+# 메모--
+추가해야하는 패키지?같은거 막 물어봤는데 계속 없다고 해서 잘 모르겠어 일단 굳이 하자면
+
+라인트레이싱 코드 자체가 요구하는 추가 패키지는 이 3개입니다.
+```
+python3-opencv
+python3-numpy
+ros-humble-cv-bridge
+```
+
+설치 명령은:
+```
+sudo apt install -y python3-opencv python3-numpy ros-humble-cv-bridge
+```
+다만 기존 통합본에서 이미 NumPy/OpenCV 등을 쓰고 있다면 그것들은 “새로 추가된 의존성”은 아닙니다. 기존 코드와 비교하기 전에는 세 개 중 무엇이 진짜 신규인지는 확정할 수 없습니다.
+
+
+
 # line_tracing_pkg
 
 KUDOS 스케일카 자율주행 - 카메라 기반 **차선 추종(Line Tracing)** 노드.
