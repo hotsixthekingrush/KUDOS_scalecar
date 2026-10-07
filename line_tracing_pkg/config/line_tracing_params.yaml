@@ -1,0 +1,56 @@
+line_tracing_node:
+  ros__parameters:
+    # ---- 토픽 (조원 가제보 환경/실차 환경에 맞춰 이 부분만 수정) ----
+    camera_topic: "/rgb/image_raw"
+    cmd_vel_topic: "/cmd_vel"
+    lane_detected_topic: "/line_tracing/lane_detected"
+    debug_image_topic: "/line_tracing/debug_image"
+    publish_debug_image: true
+
+    # ---- 카메라 해상도 ----
+    image_width: 640
+    image_height: 480
+
+    # ---- IPM (Inverse Perspective Mapping) ----
+    # [좌상x, 좌상y, 우상x, 우상y, 우하x, 우하y, 좌하x, 좌하y] (0~1 정규화)
+    # 실차/가제보 카메라 장착 각도에 따라 반드시 재보정 필요
+    ipm_src_points: [0.35, 0.62, 0.65, 0.62, 0.95, 0.95, 0.05, 0.95]
+    ipm_dst_margin_px: 150
+    xm_per_pix: 0.003   # 버드아이뷰 1px 당 실제 가로 거리(m) - 캘리브레이션 필요
+    ym_per_pix: 0.01    # 버드아이뷰 1px 당 실제 세로 거리(m) - 캘리브레이션 필요
+
+    # ---- HSV 노란색 실선 검출 임계값 ----
+    hsv_yellow_lower: [15, 80, 80]
+    hsv_yellow_upper: [35, 255, 255]
+    morph_kernel_size: 5
+    morph_iterations: 1
+
+    # ---- Sliding Window Search ----
+    sliding_window_count: 9
+    sliding_window_margin_px: 100
+    sliding_window_min_pixels: 40
+    sliding_window_min_pixels_base: 500
+    sliding_window_min_total_pixels: 200
+
+    # ---- 목표 위치 (가장자리 실선 기준) ----
+    lookahead_ratio: 0.20   # 화면 상단으로부터 몇 %지점을 목표점으로 볼지
+    lane_side: "right"      # 추종 대상 실선이 차량 기준 어느 쪽인지: right | left
+    lane_offset_m: 0.20     # 실선으로부터 유지할 목표 횡방향 거리(m)
+
+    # ---- PD 제어 게인 ----
+    pid_kp: 1.2
+    pid_ki: 0.1
+    pid_kd: 0.15
+    integral_limit: 0.5
+    heading_gain: 0.6
+    wheelbase_m: 0.2         # LIMO Pro 축거(m) - 실측값으로 교체
+    max_steer_rad: 0.5236    # 최대 조향각 (30deg)
+
+    linear_speed_mps: 0.3
+    control_rate_hz: 20.0
+
+    # ---- Fail-safe (차선 미검출 단계적 대응) ----
+    failsafe_hold_sec: 1.0
+    failsafe_creep_sec: 3.0
+    failsafe_creep_speed_mps: 0.1
+    failsafe_stop_after_sec: 5.0
