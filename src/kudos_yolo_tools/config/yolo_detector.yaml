@@ -1,0 +1,37 @@
+# yolo_detector_node 파라미터
+# [튜닝필요] 표시는 실차/대회장에서 조정
+
+yolo_detector_node:
+  ros__parameters:
+    # 개발 PC: runs/detect/train/weights/best.pt
+    # Jetson : best.engine (반드시 Jetson 위에서 export 한 파일)
+    weights: "best.pt"
+
+    image_topic: "/camera/color/image_raw"
+    camera_info_topic: "/camera/color/camera_info"
+    # Orbbec DaBai: 컬러에 정렬된 깊이 토픽을 써야 함 (depth_registration 켜기) [확인필요]
+    # 정렬 안 된 깊이를 쓰면 박스 위치의 깊이가 엉뚱한 물체 값이 됨. 모르겠으면 "" 로 끄기
+    depth_topic: "/camera/depth/image_raw"
+
+    base_frame: "base_link"
+    camera_frame: ""                 # 비우면 이미지 header.frame_id
+    camera_frame_is_optical: true    # frame 이 *_optical_frame 이 아니면 false
+
+    rate_hz: 15.0
+    imgsz: 640
+    device: "0"
+    half: true
+
+    conf_default: 0.5
+    # [튜닝필요] 좌/우 오인식은 곧바로 미션 실패 → 마커는 문턱을 높게
+    conf_per_class: ["marker_left:0.6", "marker_right:0.6"]
+
+    # [실측필요] 깊이 실패 시 거리 역산용 실제 높이 (m). 대회 규격 인쇄물 크기로 바꿀 것
+    object_height_m: ["marker_left:0.16", "marker_right:0.16", "parking_sign:0.16", "dynamic_car:0.20"]
+
+    ground_frame: "base_footprint"   # 바닥 높이를 TF 로 자동 계산
+    ground_z: 0.0                    # ground_frame TF 가 없을 때만 사용
+    max_depth_m: 3.0
+    ema_alpha: 0.5
+    ema_reset_sec: 0.5
+    publish_debug: true  # 대회 때는 false

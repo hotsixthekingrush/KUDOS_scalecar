@@ -1,0 +1,31 @@
+# yolo_detector_node — Gazebo 시뮬레이션용 (팀 git `ros2 launch limo_car ackermann_gazebo.launch.py` 기준)
+# 실차는 yolo_detector.yaml 사용
+
+yolo_detector_node:
+  ros__parameters:
+    weights: "best.pt"               # 실행 시 -p weights:=/절대경로/best.pt 로 지정 권장
+
+    image_topic: "/rgb/image_raw"          # [확인] ros2 topic list
+    camera_info_topic: "/rgb/camera_info"
+    depth_topic: "/depth_camera/depth/image_raw"        # Gazebo 깊이는 컬러와 같은 센서라 정렬되어 있음
+
+    base_frame: "base_link"
+    ground_frame: "base_footprint"
+    camera_frame: "depth_link"       # 헤더의 depth_camera_frame_optical 은 TF 에 없어서 대신 사용
+    camera_frame_is_optical: true
+
+    rate_hz: 10.0                    # Gazebo 카메라가 10Hz
+    imgsz: 640
+    device: "0"
+    half: false
+
+    conf_default: 0.5
+    conf_per_class: ["marker_left:0.6", "marker_right:0.6"]
+
+    # 월드 파일 실제 크기 (m): 마커 원판 지름 0.23, 주차 표지판 0.36, 차량 높이 ~0.21
+    object_height_m: ["marker_left:0.23", "marker_right:0.23", "parking_sign:0.36", "dynamic_car:0.21"]
+
+    max_depth_m: 3.0
+    ema_alpha: 0.5
+    ema_reset_sec: 0.5
+    publish_debug: true

@@ -1,0 +1,42 @@
+# viewpoint_sampler.py 가 로봇을 순간이동시킬 구역
+# ★ webot_arena/worlds/limo_competition.world 기준 (9/29)
+#
+# 트랙 진행 방향: 왼쪽 위 출발(+x) → 오른쪽 U턴 → 대각선(갈림길·회전교차로) → 왼쪽 U턴
+#                → 아래 직선(+x: 터널 → 차단기 → 주차)
+# 로봇이 실제 주행 중에 볼 법한 위치·방향 위주로 잡고, 조금씩 흔들어 다양성을 준다.
+#
+# type
+#   box    : x, y 범위 안에서 위치를 뽑고 yaw 는 고정값 ± yaw_jitter
+#   facing : target 앞(normal_yaw 방향) dist 만큼, 옆으로 lateral 만큼 떨어진 곳에서
+#            target 을 바라보도록 (± yaw_jitter). 표지판용 — 앞면에서만 보게 됨
+#   ring   : center 에서 radius 만큼 떨어진 원 위에서 center 를 바라보도록 (± yaw_jitter)
+# weight: 이 구역을 뽑는 상대 비율 (중요한 클래스일수록 크게)
+
+regions:
+  # 미션 2 횡단보도 — 윗 직선을 +x 로 달리며 접근 (흰 줄 x=0.32~0.98, y=3.95)
+  - {name: crosswalk,     type: box, x: [-1.8, 0.2], y: [3.75, 4.15], yaw: 0.0, yaw_jitter: 0.3, weight: 1.0}
+
+  # 미션 4 갈림길 표지판 2개 (앞면 방향 yaw 0.314). 좌/우는 매 자세마다 무작위로 맞바꿈
+  - {name: marker_start,  type: facing, target: [2.314, 1.602], normal_yaw: 0.314,
+     dist: [0.45, 2.2], lateral: [-0.7, 0.7], yaw_jitter: 0.35, weight: 2.0}
+  - {name: marker_end,    type: facing, target: [0.146, 0.898], normal_yaw: 0.314,
+     dist: [0.45, 2.2], lateral: [-0.7, 0.7], yaw_jitter: 0.35, weight: 2.0}
+
+  # 미션 5 회전교차로 — 섬 중심 (-2.15, 0.2), 차량 궤도 반지름 0.68
+  - {name: roundabout,    type: ring, center: [-2.15, 0.2], radius: [1.05, 2.0], yaw_jitter: 0.5, weight: 1.0}
+
+  # 미션 7 차단기 — 아래 직선을 +x 로 달리며 접근 (바 중심 x=3.55, 도로 y≈-3.55)
+  - {name: gate,          type: box, x: [1.6, 3.15], y: [-3.8, -3.3], yaw: 0.0, yaw_jitter: 0.3, weight: 1.0}
+
+  # 미션 8 주차 표지판 — (6.02, -3.0), 앞면이 -x 쪽 (normal_yaw = pi)
+  #   lateral 은 로봇 기준 오른쪽(-y 쪽, 도로 쪽)으로 치우치게
+  - {name: parking,       type: facing, target: [6.02, -3.0], normal_yaw: 3.1416,
+     dist: [0.6, 1.9], lateral: [-0.2, 0.7], yaw_jitter: 0.35, weight: 1.5}
+
+# 로봇을 놓으면 안 되는 곳 (기둥·섬). 중심 [x, y] 에서 r(m) 이내면 다시 뽑는다.
+avoid:
+  - {xy: [2.314, 1.602], r: 0.30}    # 갈림길 시작 표지판 기둥
+  - {xy: [0.146, 0.898], r: 0.30}    # 갈림길 끝 표지판 기둥
+  - {xy: [6.02, -3.0],   r: 0.30}    # 주차 표지판 기둥
+  - {xy: [3.55, -3.12],  r: 0.30}    # 차단기 기둥
+  - {xy: [-2.15, 0.2],   r: 0.60}    # 회전교차로 섬
