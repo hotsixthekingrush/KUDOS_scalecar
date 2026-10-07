@@ -9,11 +9,11 @@ from rclpy.qos import qos_profile_sensor_data
 from scipy.spatial import cKDTree
 
 from sensor_msgs.msg import LaserScan
-from std_msgs.msg import String, Float32, Float32MultiArray
+from std_msgs.msg import String, Float32, Float32
 from geometry_msgs.msg import Point
 from visualization_msgs.msg import Marker, MarkerArray
 
-from ar_msgs.msg import Obstacle, ObstacleArray, WallArray, WallSegment
+from ar_msgs.msg import Obstacle, ObstacleArray, WallArray, WallSegment, ParkingGap
 
 
 class LidarPerception(Node):
@@ -91,6 +91,8 @@ class LidarPerception(Node):
 
         self.declare_parameter('gate_min_points', 5)
 
+        self.declare_parameter('gate_centerline_margin', 0.05)
+
         self.declare_parameter('parking_x_min', 0.0)
         self.declare_parameter('parking_x_max', 2.0)
         self.declare_parameter('parking_y_min', 0.20)
@@ -105,6 +107,7 @@ class LidarPerception(Node):
         self.declare_parameter('parking_gap_min_length', 0.60)
         self.declare_parameter('parking_gap_confirm_frames', 3)
         self.declare_parameter('parking_gap_match_distance', 0.20)
+        self.declare_parameter('parking_gap_keep_behind_distance', 1.0)
         self.declare_parameter('parking_boundary_stale_frames', 3)
         self.declare_parameter('parking_max_boundaries', 10)
 
@@ -155,7 +158,7 @@ class LidarPerception(Node):
         )
 
         self.pub_parking_gap = self.create_publisher(
-            Float32MultiArray,
+            ParkingGap,
             '/perception/parking_gap',
             10
         )
@@ -187,6 +190,8 @@ class LidarPerception(Node):
         self.previous_parking_gap = None
         self.parking_gap_confirm_count = 0
         self.confirmed_parking_gap = None
+        self.parking_gap_id_counter = 0
+        self.active_parking_gap_id = 0
 
     def odom_callback(self, msg):
         self.latest_odom = msg
@@ -226,6 +231,25 @@ class LidarPerception(Node):
         y_odom = py + s * x_base + c * y_base
 
         return x_odom, y_odom
+
+    def odom_to_base(self, x_odom, y_odom):
+        odom_pose = self.get_odom_pose()
+
+        if odom_pose is None:
+            return None
+
+        px, py, yaw = odom_pose
+
+        dx = x_odom - px
+        dy = y_odom - py
+
+        c = math.cos(yaw)
+        s = math.sin(yaw)
+
+        x_base = c * dx + s * dy
+        y_base = -s * dx + c * dy
+
+        return x_base, y_base
     
     #tracking
     def track_obstacles(self, obstacles, stamp):
@@ -410,6 +434,13 @@ class LidarPerception(Node):
         # 2. Remove robot's own body
         # ---------------------------------------------------------        
         filtered_points = self.remove_self_points(points)
+
+# ---------------------------------------------------------
+# Parking perception
+# 주차용 ROI는 왼쪽 영역만 사용한다.
+# 다른 미션 ROI와 독립적으로 항상 동작한다.
+# 판단 파트가 parking state일 때만 이 결과를 사용한다.
+# ---------------------------------------------------------
         parking_walls = self.detect_parking_walls(filtered_points)
 
         wall_array = WallArray()
@@ -418,6 +449,14 @@ class LidarPerception(Node):
         wall_array.walls = parking_walls
 
         self.pub_walls.publish(wall_array)
+        self.update_parking_boundaries(parking_walls)
+        self.evaluate_parking_gaps(scan.header.stamp)
+
+# ---------------------------------------------------------
+# General perception ROI
+# cone / roundabout / gate용
+# 차량 전방 좌우 전체 영역을 사용한다.
+# ---------------------------------------------------------
 
 
 
@@ -1047,6 +1086,25 @@ class LidarPerception(Node):
             'gate_min_points'
         ).value
 
+        centerline_margin = float(
+            self.get_parameter('gate_centerline_margin').value
+        )
+
+        angle_rad = math.radians(angle_deg)
+
+# 선분 길이 중 y 방향으로 뻗은 절반 길이
+        half_y_span = (
+            0.5
+            * length
+            * abs(math.sin(angle_rad))
+        )
+
+# 선분이 차량 중앙선 y=0을 실제로 가로지르는가
+        crosses_centerline = (
+            abs(center_y)
+            <= half_y_span + centerline_margin
+        )
+
         return (
             length_min <= length <= length_max
             and residual <= residual_max
@@ -1054,6 +1112,7 @@ class LidarPerception(Node):
             and x_min <= center_x <= x_max
             and abs(center_y) <= y_abs_max
             and len(cluster) >= min_points
+            and crosses_centerline
         )
     
     # =============================================================
@@ -1530,6 +1589,25 @@ class LidarPerception(Node):
                 line
             )
 
+            angle_rad = math.radians(angle_deg)
+
+            half_y_span = (
+                0.5
+                * length
+                * abs(math.sin(angle_rad))
+            )
+
+            centerline_margin = float(
+                self.get_parameter(
+                    'gate_centerline_margin'
+                ).value
+            )
+
+            crosses_centerline = (
+                abs(center_y)
+                <= half_y_span + centerline_margin
+            )
+
             self.get_logger().info(
                 f'Gate check {i}: '
                 f'x={center_x:.2f} | '
@@ -1538,6 +1616,7 @@ class LidarPerception(Node):
                 f'angle={angle_deg:.1f} deg | '
                 f'residual={residual:.4f} | '
                 f'points={len(cluster)} | '
+                f'cross_center={crosses_centerline} | '
                 f'candidate={candidate}'
             )
 
@@ -1806,7 +1885,7 @@ class LidarPerception(Node):
 
         odom_pose = self.get_odom_pose()
         if odom_pose is None:
-            return gaps[0]
+            return None
 
         px, py, yaw = odom_pose
         forward_x = math.cos(yaw)
@@ -1839,9 +1918,9 @@ class LidarPerception(Node):
         if best_gap is not None:
             return best_gap
 
-        return gaps[0]
+        return None
 
-    def update_parking_gap_confirmation(self, gap):
+    def update_parking_gap_confirmation(self, gap, scan_stamp):
         """
         연속 frame confirm count를 관리하고,
         확정된 gap을 publish한다.
@@ -1857,7 +1936,8 @@ class LidarPerception(Node):
             self.previous_parking_gap = None
             self.parking_gap_confirm_count = 0
             self.confirmed_parking_gap = None
-            self.publish_parking_gap(0.0, 0.0, 0.0, 0.0)
+            self.active_parking_gap_id = 0
+            self.publish_parking_gap(scan_stamp, False, False, 0)
             return None
 
         center_x = gap['center_x']
@@ -1880,6 +1960,8 @@ class LidarPerception(Node):
         else:
             self.parking_gap_confirm_count = 1
             self.confirmed_parking_gap = None
+            self.parking_gap_id_counter += 1
+            self.active_parking_gap_id = self.parking_gap_id_counter
 
         self.previous_parking_gap = {
             'center_x': center_x,
@@ -1905,37 +1987,97 @@ class LidarPerception(Node):
                 f'center=({center_x:.2f}, {center_y:.2f}) | '
                 f'length={length:.2f} m'
             )
-            self.publish_parking_gap(center_x, center_y, length, 1.0)
+            self.publish_parking_gap(
+                scan_stamp, True, True, self.active_parking_gap_id,
+                center_x, center_y, length
+            )
             return self.confirmed_parking_gap
 
         if self.confirmed_parking_gap is not None:
             self.publish_parking_gap(
+                scan_stamp, True, True, self.active_parking_gap_id,
                 self.confirmed_parking_gap['center_x'],
                 self.confirmed_parking_gap['center_y'],
-                self.confirmed_parking_gap['length'],
-                1.0
+                self.confirmed_parking_gap['length']
             )
             return self.confirmed_parking_gap
 
-        self.publish_parking_gap(center_x, center_y, length, 0.0)
+        self.publish_parking_gap(
+            scan_stamp, True, False, self.active_parking_gap_id,
+            center_x, center_y, length
+        )
         return None
 
-    def publish_parking_gap(self, center_x, center_y, length, confirmed):
-        msg = Float32MultiArray()
-        msg.data = [
-            float(center_x),
-            float(center_y),
-            float(length),
-            float(confirmed),
-        ]
+    def publish_parking_gap(self, scan_stamp, valid, confirmed,gap_id, center_x_odom=0.0,
+        center_y_odom=0.0,
+        length=0.0,
+        depth=0.0
+    ):
+        msg = ParkingGap()
+
+        msg.header.stamp = scan_stamp
+        msg.header.frame_id = 'base_link'
+
+        msg.valid = bool(valid)
+        msg.confirmed = bool(confirmed)
+        msg.gap_id = int(gap_id)
+
+        if valid:
+            base_pos = self.odom_to_base(
+                center_x_odom,
+                center_y_odom
+            )
+
+            if base_pos is None:
+                msg.valid = False
+                msg.confirmed = False
+                msg.center_x = 0.0
+                msg.center_y = 0.0
+
+            else:
+                center_x_base, center_y_base = base_pos
+
+                msg.center_x = float(center_x_base)
+                msg.center_y = float(center_y_base)
+
+        else:
+            msg.center_x = 0.0
+            msg.center_y = 0.0
+
+        if not msg.valid:
+            msg.confirmed = False
+            msg.gap_id = 0
+        msg.length = float(length) if msg.valid else 0.0
+        msg.depth = 0.0
+
         self.pub_parking_gap.publish(msg)
 
-    def evaluate_parking_gaps(self):
+
+
+
+    def evaluate_parking_gaps(self, scan_stamp):
         """
         parking boundary를 주행방향 기준으로 정렬하고,
         인접한 pair만 projected gap을 계산한 뒤
         confirm count와 최종 gap을 관리한다.
         """
+        if self.confirmed_parking_gap is not None:
+            gap = self.confirmed_parking_gap
+            base_pos = self.odom_to_base(gap['center_x'], gap['center_y'])
+            keep_behind = float(
+                self.get_parameter('parking_gap_keep_behind_distance').value
+            )
+            if base_pos is None or base_pos[0] >= -keep_behind:
+                self.publish_parking_gap(
+                    scan_stamp, True, True, self.active_parking_gap_id,
+                    gap['center_x'], gap['center_y'], gap['length']
+                )
+                return []
+            self.previous_parking_gap = None
+            self.parking_gap_confirm_count = 0
+            self.confirmed_parking_gap = None
+            self.active_parking_gap_id = 0
+
         stale_frames = int(
             self.get_parameter('parking_boundary_stale_frames').value
         )
@@ -1948,7 +2090,7 @@ class LidarPerception(Node):
             boundary['last_seen_frame'] == self.parking_frame_id
             for boundary in active_boundaries
         ):
-            self.update_parking_gap_confirmation(None)
+            self.update_parking_gap_confirmation(None, scan_stamp)
             return []
 
         odom_pose = self.get_odom_pose()
@@ -2020,7 +2162,7 @@ class LidarPerception(Node):
             )
 
         selected_gap = self.select_parking_gap(candidate_gaps)
-        confirmed_gap = self.update_parking_gap_confirmation(selected_gap)
+        confirmed_gap = self.update_parking_gap_confirmation(selected_gap, scan_stamp)
 
         if confirmed_gap is not None:
             self.confirmed_parking_gap = confirmed_gap

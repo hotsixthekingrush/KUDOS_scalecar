@@ -58,6 +58,8 @@ lidar_perception:
 
     gate_min_points: 5
 
+    gate_centerline_margin: 0.05
+
     #parking
     parking_x_min: 0.0
     parking_x_max: 2.0
@@ -75,3 +77,4 @@ lidar_perception:
     parking_max_boundaries: 10
     parking_gap_match_distance: 0.20
     parking_boundary_stale_frames: 3
+    parking_gap_keep_behind_distance: 1.0

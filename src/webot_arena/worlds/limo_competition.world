@@ -2011,7 +2011,7 @@
             <script>
               <uri>file:///home/td/Workspace/limo_competition_ws/src/webot_arena/media/materials/scripts</uri>
               <uri>file:///home/td/Workspace/limo_competition_ws/src/webot_arena/media/materials/textures</uri>
-              <name>KUDOS/M4_Right</name>
+              <name>KUDOS/M4_Left</name>
             </script>
           </material>
         </visual>
@@ -2076,152 +2076,8 @@
             <script>
               <uri>file:///home/td/Workspace/limo_competition_ws/src/webot_arena/media/materials/scripts</uri>
               <uri>file:///home/td/Workspace/limo_competition_ws/src/webot_arena/media/materials/textures</uri>
-              <name>KUDOS/M4_Left</name>
+              <name>KUDOS/M4_Right</name>
             </script>
-          </material>
-        </visual>
-      </link>
-    </model>
-    <model name="roundabout_outer_1">
-      <static>true</static>
-      <pose>-1.1519026509541272 0.2435778713738291 0.003 0 0 1.6144295580947547</pose>
-      <link name="link">
-        <visual name="visual">
-          <geometry>
-            <box>
-              <size>0.08723877473067201 0.025 0.004</size>
-            </box>
-          </geometry>
-          <material>
-            <ambient>0.88 0.82 0.05 1.0</ambient>
-            <diffuse>0.88 0.82 0.05 1.0</diffuse>
-            <specular>0.05 0.05 0.05 1</specular>
-          </material>
-        </visual>
-      </link>
-    </model>
-    <model name="roundabout_outer_2">
-      <static>true</static>
-      <pose>-1.1594987744480232 0.3304019602072943 0.003 0 0 1.7016960206944707</pose>
-      <link name="link">
-        <visual name="visual">
-          <geometry>
-            <box>
-              <size>0.08723877473067199 0.025 0.004</size>
-            </box>
-          </geometry>
-          <material>
-            <ambient>0.88 0.82 0.05 1.0</ambient>
-            <diffuse>0.88 0.82 0.05 1.0</diffuse>
-            <specular>0.05 0.05 0.05 1</specular>
-          </material>
-        </visual>
-      </link>
-    </model>
-    <model name="roundabout_outer_3">
-      <static>true</static>
-      <pose>-1.1746332103493617 0.4162336113847256 0.003 0 0 1.7889624832941897</pose>
-      <link name="link">
-        <visual name="visual">
-          <geometry>
-            <box>
-              <size>0.087238774730672 0.025 0.004</size>
-            </box>
-          </geometry>
-          <material>
-            <ambient>0.88 0.82 0.05 1.0</ambient>
-            <diffuse>0.88 0.82 0.05 1.0</diffuse>
-            <specular>0.05 0.05 0.05 1</specular>
-          </material>
-        </visual>
-      </link>
-    </model>
-    <model name="roundabout_outer_4">
-      <static>true</static>
-      <pose>-1.1971907764625116 0.5004195942140948 0.003 0 0 1.8762289458939028</pose>
-      <link name="link">
-        <visual name="visual">
-          <geometry>
-            <box>
-              <size>0.08723877473067196 0.025 0.004</size>
-            </box>
-          </geometry>
-          <material>
-            <ambient>0.88 0.82 0.05 1.0</ambient>
-            <diffuse>0.88 0.82 0.05 1.0</diffuse>
-            <specular>0.05 0.05 0.05 1</specular>
-          </material>
-        </visual>
-      </link>
-    </model>
-    <model name="roundabout_outer_5">
-      <static>true</static>
-      <pose>-1.2269997960887207 0.582319202533184 0.003 0 0 1.9634954084936203</pose>
-      <link name="link">
-        <visual name="visual">
-          <geometry>
-            <box>
-              <size>0.08723877473067201 0.025 0.004</size>
-            </box>
-          </geometry>
-          <material>
-            <ambient>0.88 0.82 0.05 1.0</ambient>
-            <diffuse>0.88 0.82 0.05 1.0</diffuse>
-            <specular>0.05 0.05 0.05 1</specular>
-          </material>
-        </visual>
-      </link>
-    </model>
-    <model name="roundabout_outer_6">
-      <static>true</static>
-      <pose>-1.2638334045894555 0.6613091308703497 0.003 0 0 2.0507618710933366</pose>
-      <link name="link">
-        <visual name="visual">
-          <geometry>
-            <box>
-              <size>0.0872387747306719 0.025 0.004</size>
-            </box>
-          </geometry>
-          <material>
-            <ambient>0.88 0.82 0.05 1.0</ambient>
-            <diffuse>0.88 0.82 0.05 1.0</diffuse>
-            <specular>0.05 0.05 0.05 1</specular>
-          </material>
-        </visual>
-      </link>
-    </model>
-    <model name="roundabout_outer_7">
-      <static>true</static>
-      <pose>-1.3074112759632845 0.736788218175523 0.003 0 0 2.1380283336930543</pose>
-      <link name="link">
-        <visual name="visual">
-          <geometry>
-            <box>
-              <size>0.08723877473067199 0.025 0.004</size>
-            </box>
-          </geometry>
-          <material>
-            <ambient>0.88 0.82 0.05 1.0</ambient>
-            <diffuse>0.88 0.82 0.05 1.0</diffuse>
-            <specular>0.05 0.05 0.05 1</specular>
-          </material>
-        </visual>
-      </link>
-    </model>
-    <model name="roundabout_outer_8">
-      <static>true</static>
-      <pose>-1.357401756296015 0.8081820230187926 0.003 0 0 2.2252947962927725</pose>
-      <link name="link">
-        <visual name="visual">
-          <geometry>
-            <box>
-              <size>0.08723877473067214 0.025 0.004</size>
-            </box>
-          </geometry>
-          <material>
-            <ambient>0.88 0.82 0.05 1.0</ambient>
-            <diffuse>0.88 0.82 0.05 1.0</diffuse>
-            <specular>0.05 0.05 0.05 1</specular>
           </material>
         </visual>
       </link>
@@ -2802,186 +2658,6 @@
         </visual>
       </link>
     </model>
-    <model name="roundabout_outer_41">
-      <static>true</static>
-      <pose>-3.0730002039112794 -0.18231920253318395 0.003 0 0 -1.1780972450961724</pose>
-      <link name="link">
-        <visual name="visual">
-          <geometry>
-            <box>
-              <size>0.0872387747306719 0.025 0.004</size>
-            </box>
-          </geometry>
-          <material>
-            <ambient>0.88 0.82 0.05 1.0</ambient>
-            <diffuse>0.88 0.82 0.05 1.0</diffuse>
-            <specular>0.05 0.05 0.05 1</specular>
-          </material>
-        </visual>
-      </link>
-    </model>
-    <model name="roundabout_outer_42">
-      <static>true</static>
-      <pose>-3.0361665954105446 -0.2613091308703497 0.003 0 0 -1.0908307824964583</pose>
-      <link name="link">
-        <visual name="visual">
-          <geometry>
-            <box>
-              <size>0.0872387747306722 0.025 0.004</size>
-            </box>
-          </geometry>
-          <material>
-            <ambient>0.88 0.82 0.05 1.0</ambient>
-            <diffuse>0.88 0.82 0.05 1.0</diffuse>
-            <specular>0.05 0.05 0.05 1</specular>
-          </material>
-        </visual>
-      </link>
-    </model>
-    <model name="roundabout_outer_43">
-      <static>true</static>
-      <pose>-2.9925887240367155 -0.3367882181755231 0.003 0 0 -1.0035643198967388</pose>
-      <link name="link">
-        <visual name="visual">
-          <geometry>
-            <box>
-              <size>0.08723877473067199 0.025 0.004</size>
-            </box>
-          </geometry>
-          <material>
-            <ambient>0.88 0.82 0.05 1.0</ambient>
-            <diffuse>0.88 0.82 0.05 1.0</diffuse>
-            <specular>0.05 0.05 0.05 1</specular>
-          </material>
-        </visual>
-      </link>
-    </model>
-    <model name="roundabout_outer_44">
-      <static>true</static>
-      <pose>-2.942598243703985 -0.40818202301879286 0.003 0 0 -0.9162978572970221</pose>
-      <link name="link">
-        <visual name="visual">
-          <geometry>
-            <box>
-              <size>0.0872387747306723 0.025 0.004</size>
-            </box>
-          </geometry>
-          <material>
-            <ambient>0.88 0.82 0.05 1.0</ambient>
-            <diffuse>0.88 0.82 0.05 1.0</diffuse>
-            <specular>0.05 0.05 0.05 1</specular>
-          </material>
-        </visual>
-      </link>
-    </model>
-    <model name="roundabout_outer_45">
-      <static>true</static>
-      <pose>-2.886575612152763 -0.4749471954365435 0.003 0 0 -0.8290313946973051</pose>
-      <link name="link">
-        <visual name="visual">
-          <geometry>
-            <box>
-              <size>0.08723877473067175 0.025 0.004</size>
-            </box>
-          </geometry>
-          <material>
-            <ambient>0.88 0.82 0.05 1.0</ambient>
-            <diffuse>0.88 0.82 0.05 1.0</diffuse>
-            <specular>0.05 0.05 0.05 1</specular>
-          </material>
-        </visual>
-      </link>
-    </model>
-    <model name="roundabout_outer_46">
-      <static>true</static>
-      <pose>-2.8249471954365433 -0.5365756121527627 0.003 0 0 -0.7417649320975894</pose>
-      <link name="link">
-        <visual name="visual">
-          <geometry>
-            <box>
-              <size>0.08723877473067196 0.025 0.004</size>
-            </box>
-          </geometry>
-          <material>
-            <ambient>0.88 0.82 0.05 1.0</ambient>
-            <diffuse>0.88 0.82 0.05 1.0</diffuse>
-            <specular>0.05 0.05 0.05 1</specular>
-          </material>
-        </visual>
-      </link>
-    </model>
-    <model name="roundabout_outer_47">
-      <static>true</static>
-      <pose>-2.758182023018793 -0.5925982437039847 0.003 0 0 -0.6544984694978752</pose>
-      <link name="link">
-        <visual name="visual">
-          <geometry>
-            <box>
-              <size>0.08723877473067151 0.025 0.004</size>
-            </box>
-          </geometry>
-          <material>
-            <ambient>0.88 0.82 0.05 1.0</ambient>
-            <diffuse>0.88 0.82 0.05 1.0</diffuse>
-            <specular>0.05 0.05 0.05 1</specular>
-          </material>
-        </visual>
-      </link>
-    </model>
-    <model name="roundabout_outer_48">
-      <static>true</static>
-      <pose>-2.6867882181755234 -0.642588724036715 0.003 0 0 -0.5672320068981579</pose>
-      <link name="link">
-        <visual name="visual">
-          <geometry>
-            <box>
-              <size>0.08723877473067199 0.025 0.004</size>
-            </box>
-          </geometry>
-          <material>
-            <ambient>0.88 0.82 0.05 1.0</ambient>
-            <diffuse>0.88 0.82 0.05 1.0</diffuse>
-            <specular>0.05 0.05 0.05 1</specular>
-          </material>
-        </visual>
-      </link>
-    </model>
-    <model name="roundabout_outer_49">
-      <static>true</static>
-      <pose>-2.6113091308703495 -0.6861665954105443 0.003 0 0 -0.47996554429844107</pose>
-      <link name="link">
-        <visual name="visual">
-          <geometry>
-            <box>
-              <size>0.08723877473067271 0.025 0.004</size>
-            </box>
-          </geometry>
-          <material>
-            <ambient>0.88 0.82 0.05 1.0</ambient>
-            <diffuse>0.88 0.82 0.05 1.0</diffuse>
-            <specular>0.05 0.05 0.05 1</specular>
-          </material>
-        </visual>
-      </link>
-    </model>
-    <model name="roundabout_outer_50">
-      <static>true</static>
-      <pose>-2.5323192025331838 -0.7230002039112793 0.003 0 0 -0.39269908169872314</pose>
-      <link name="link">
-        <visual name="visual">
-          <geometry>
-            <box>
-              <size>0.08723877473067211 0.025 0.004</size>
-            </box>
-          </geometry>
-          <material>
-            <ambient>0.88 0.82 0.05 1.0</ambient>
-            <diffuse>0.88 0.82 0.05 1.0</diffuse>
-            <specular>0.05 0.05 0.05 1</specular>
-          </material>
-        </visual>
-      </link>
-    </model>
     <model name="roundabout_outer_51">
       <static>true</static>
       <pose>-2.4504195942140945 -0.7528092235374884 0.003 0 0 -0.3054326190990072</pose>
@@ -3345,24 +3021,6 @@
     <model name="roundabout_outer_71">
       <static>true</static>
       <pose>-1.1594987744480232 0.06959803979270565 0.003 0 0 1.4398966328953224</pose>
-      <link name="link">
-        <visual name="visual">
-          <geometry>
-            <box>
-              <size>0.08723877473067189 0.025 0.004</size>
-            </box>
-          </geometry>
-          <material>
-            <ambient>0.88 0.82 0.05 1.0</ambient>
-            <diffuse>0.88 0.82 0.05 1.0</diffuse>
-            <specular>0.05 0.05 0.05 1</specular>
-          </material>
-        </visual>
-      </link>
-    </model>
-    <model name="roundabout_outer_72">
-      <static>true</static>
-      <pose>-1.1519026509541272 0.15642212862617072 0.003 0 0 1.5271630954950384</pose>
       <link name="link">
         <visual name="visual">
           <geometry>
@@ -5747,7 +5405,7 @@
     </model>
     <model name="bottom_upper_1">
       <static>true</static>
-      <pose>0.40000000000000036 -3.15 0.003 0.0 0.0 0.0</pose>
+      <pose>0.3999999999999999 -3.15 0.003 0 0 0.0</pose>
       <link name="link">
         <visual name="visual">
           <geometry>
@@ -5901,7 +5559,7 @@
     </model>
     <model name="cone_02">
       <static>true</static>
-      <pose>11.409121150491952 4.186677251825204 0.0 0.0 0.0 0.0</pose>
+      <pose>5.409121150491952 4.186677251825204 0.0 0.0 0.0 0.0</pose>
       <link name="link">
         <collision name="collision">
           <geometry>
@@ -6476,19 +6134,19 @@
     </model>
     <model name="moving_barrier_arm">
       <static>true</static>
-      <pose>3.55 -3.55 0.25 0 0 0.0</pose>
+      <pose>3.55 -3.55 0.43 0 0 0.0</pose>
       <link name="link">
         <collision name="collision">
           <geometry>
             <box>
-              <size>0.05 1.10 0.30</size>
+              <size>0.07 1.1 0.07</size>
             </box>
           </geometry>
         </collision>
         <visual name="visual">
           <geometry>
             <box>
-              <size>0.05 1.10 0.30</size>
+              <size>0.07 1.1 0.07</size>
             </box>
           </geometry>
           <material>
@@ -6533,7 +6191,7 @@
         <visual name="visual">
           <geometry>
             <box>
-              <size>0.8299999999999997 0.025 0.004</size>
+              <size>0.8300000000000001 0.025 0.004</size>
             </box>
           </geometry>
           <material>
@@ -6569,7 +6227,7 @@
         <visual name="visual">
           <geometry>
             <box>
-              <size>0.8299999999999997 0.025 0.004</size>
+              <size>0.8300000000000001 0.025 0.004</size>
             </box>
           </geometry>
           <material>
@@ -6616,51 +6274,6 @@
         </visual>
       </link>
     </model>
-    <model name="parking_sign_post">
-      <static>true</static>
-      <pose>6.02 -3.0 0.125 0 0 0.0</pose>
-      <link name="link">
-        <collision name="collision">
-          <geometry>
-            <box>
-              <size>0.035 0.035 0.25</size>
-            </box>
-          </geometry>
-        </collision>
-        <visual name="visual">
-          <geometry>
-            <box>
-              <size>0.035 0.035 0.25</size>
-            </box>
-          </geometry>
-          <material>
-            <ambient>0.35 0.35 0.35 1.0</ambient>
-            <diffuse>0.35 0.35 0.35 1.0</diffuse>
-            <specular>0.05 0.05 0.05 1</specular>
-          </material>
-        </visual>
-      </link>
-    </model>
-    <model name="parking_sign_panel">
-      <static>true</static>
-      <pose>6.02 -3.0 0.43 0 0 3.141592653589793</pose>
-      <link name="link">
-        <visual name="visual">
-          <geometry>
-            <box>
-              <size>0.018 0.36 0.36</size>
-            </box>
-          </geometry>
-          <material>
-            <script>
-              <uri>file:///home/td/Workspace/limo_competition_ws/src/webot_arena/media/materials/scripts</uri>
-              <uri>file:///home/td/Workspace/limo_competition_ws/src/webot_arena/media/materials/textures</uri>
-              <name>KUDOS/Parking</name>
-            </script>
-          </material>
-        </visual>
-      </link>
-    </model>
     <model name="parking_wall_1">
       <static>true</static>
       <pose>6.2 -2.935 0.275 0 0 1.5707963267948966</pose>
@@ -6668,14 +6281,14 @@
         <collision name="collision">
           <geometry>
             <box>
-              <size>0.8299999999999997 0.08 0.55</size>
+              <size>0.8300000000000001 0.08 0.55</size>
             </box>
           </geometry>
         </collision>
         <visual name="visual">
           <geometry>
             <box>
-              <size>0.8299999999999997 0.08 0.55</size>
+              <size>0.8300000000000001 0.08 0.55</size>
             </box>
           </geometry>
           <material>
@@ -6718,20 +6331,65 @@
         <collision name="collision">
           <geometry>
             <box>
-              <size>0.8299999999999997 0.08 0.55</size>
+              <size>0.8300000000000001 0.08 0.55</size>
             </box>
           </geometry>
         </collision>
         <visual name="visual">
           <geometry>
             <box>
-              <size>0.8299999999999997 0.08 0.55</size>
+              <size>0.8300000000000001 0.08 0.55</size>
             </box>
           </geometry>
           <material>
             <ambient>0.35 0.35 0.35 1.0</ambient>
             <diffuse>0.35 0.35 0.35 1.0</diffuse>
             <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="parking_sign_post">
+      <static>true</static>
+      <pose>6.02 -3.0 0.125 0 0 0.0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>0.035 0.035 0.25</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>0.035 0.035 0.25</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.35 0.35 0.35 1.0</ambient>
+            <diffuse>0.35 0.35 0.35 1.0</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="parking_sign_panel">
+      <static>true</static>
+      <pose>6.02 -3.0 0.43 0 0 3.141592653589793</pose>
+      <link name="link">
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>0.018 0.36 0.36</size>
+            </box>
+          </geometry>
+          <material>
+            <script>
+              <uri>file:///home/td/Workspace/limo_competition_ws/src/webot_arena/media/materials/scripts</uri>
+              <uri>file:///home/td/Workspace/limo_competition_ws/src/webot_arena/media/materials/textures</uri>
+              <name>KUDOS/Parking</name>
+            </script>
           </material>
         </visual>
       </link>

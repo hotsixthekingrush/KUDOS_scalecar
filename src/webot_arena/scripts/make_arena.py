@@ -746,7 +746,13 @@ def create_m4_lane_change(world):
 
 
 def create_roundabout(world):
-    add_arc(
+    skip_outer_segments = (
+        set(range(1, 9))
+        | set(range(41, 51))
+        | {72}
+    )
+
+    add_arc_with_skips(
         world,
         "roundabout_outer",
         ROUNDABOUT_CX,
@@ -754,8 +760,47 @@ def create_roundabout(world):
         ROUNDABOUT_OUTER_R,
         0,
         360,
-        segments=72
+        segments=72,
+        skip_segments=skip_outer_segments
     )
+
+def add_arc_with_skips(
+    world,
+    prefix,
+    cx,
+    cy,
+    radius,
+    angle_start,
+    angle_end,
+    segments,
+    skip_segments,
+    width=EDGE_LINE_WIDTH,
+    color=COLOR_YELLOW
+):
+    for i in range(segments):
+        seg_num = i + 1
+
+        deg1 = angle_start + (angle_end - angle_start) * (i / segments)
+        deg2 = angle_start + (angle_end - angle_start) * ((i + 1) / segments)
+
+        p1 = arc_point(cx, cy, radius, deg1)
+        p2 = arc_point(cx, cy, radius, deg2)
+
+        # 번호는 그대로 유지하면서 해당 segment만 생성하지 않음
+        if seg_num in skip_segments:
+            unique_name(prefix)
+            continue
+
+        add_line_segment(
+            world,
+            prefix,
+            p1[0],
+            p1[1],
+            p2[0],
+            p2[1],
+            width=width,
+            color=color
+        )
 
     # --------------------------------------------------------
     # 중앙 원기둥
