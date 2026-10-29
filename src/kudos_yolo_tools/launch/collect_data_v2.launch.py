@@ -12,6 +12,8 @@ branch_sign:=auto (기본)
   읽어 targets_v2_A.yaml / targets_v2_B.yaml 을 자동으로 고른다. 직접 정하려면 branch_sign:=A|B.
   저장 파일 이름 앞에 A_ / B_ 가 붙어서 나중에 어느 쪽 실행분인지 확인할 수 있다.
 
+only:=branch  해당 구역만 수집 (예: B 실행 때 갈림길만 더 모으기). 이름: branch, parking, traffic_light
+
 mode:=auto  (권장) 로봇을 표지판 앞에 자동 순간이동시키며 수집 (viewpoint_sampler)
 mode:=drive 사람이 teleop 으로 운전하며 수집 (domain_randomizer)
 
@@ -54,6 +56,23 @@ def detect_branch_sign(pattern):
     return sign.group(1), path
 
 
+def filter_regions(path, names):
+    """viewpoints 파일에서 names 구역만 남긴 임시 파일을 만들어 경로를 돌려준다."""
+    import tempfile
+    import yaml
+    with open(path) as f:
+        cfg = yaml.safe_load(f)
+    known = [r['name'] for r in cfg['regions']]
+    unknown = [n for n in names if n not in known]
+    if unknown:
+        raise RuntimeError('only 에 없는 구역 이름: %s (있는 이름: %s)' % (unknown, known))
+    cfg['regions'] = [r for r in cfg['regions'] if r['name'] in names]
+    fd, tmp = tempfile.mkstemp(prefix='collect_v2_viewpoints_', suffix='.yaml')
+    with os.fdopen(fd, 'w') as f:
+        yaml.safe_dump(cfg, f, allow_unicode=True, sort_keys=False)
+    return tmp
+
+
 def setup(context):
     get = lambda name: LaunchConfiguration(name).perform(context).strip()
     actions = []
@@ -68,6 +87,10 @@ def setup(context):
     share = get_package_share_directory('kudos_yolo_tools')
     targets = os.path.join(share, 'config', 'targets_v2_%s.yaml' % sign)
     viewpoints = os.path.join(share, 'config', 'viewpoints_v2.yaml')
+    only = [n.strip() for n in get('only').split(',') if n.strip()]
+    if only:
+        viewpoints = filter_regions(viewpoints, only)
+        actions.append(LogInfo(msg='[collect_v2] 구역 %s 만 수집 (%s)' % (','.join(only), viewpoints)))
     out = os.path.expanduser(get('output_dir'))
     session = '%s_%s' % (sign, time.strftime('%m%d_%H%M%S'))
     mode = get('mode')
@@ -104,6 +127,8 @@ def generate_launch_description():
         DeclareLaunchArgument('branch_sign', default_value='auto', description='auto | A | B'),
         DeclareLaunchArgument('robot', default_value='limo',
                               description='Gazebo 로봇 이름 (competition.launch.py 의 -entity limo)'),
+        DeclareLaunchArgument('only', default_value='',
+                              description='이 구역만 수집 (쉼표 구분: branch, parking, traffic_light). 비우면 전부'),
         DeclareLaunchArgument('world_glob', default_value='/tmp/kudos_arena_*/track_2026.world'),
         OpaqueFunction(function=setup),
     ])
