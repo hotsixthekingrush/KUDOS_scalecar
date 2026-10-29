@@ -1,0 +1,23 @@
+# YOLOv8 데이터셋 설정 v2 — 새 규정(10/8 규정집) 기준, 10/29
+# 클래스 순서는 targets_v2_A/B.yaml 의 classes 와 같아야 한다. 바꾸지 말고 뒤에만 추가.
+# 아직 데이터가 없는 클래스(slow_sign 등)는 자리만 두면 된다.
+
+# 데이터셋 루트 — 절대경로로 쓰기
+path: /home/gyun/yolo_data/v2
+
+# 폴더 여러 개를 목록으로 줄 수 있다 (미션별 폴더, 실사/시뮬 분리)
+#   예) train: [sim_m2m4_aug/images/train, real_m2m4/images/train, negatives/images/train]
+#   val 은 실사만 쓰는 것을 권장 (실차 성능을 봐야 하므로)
+train: [sim_m2m4_aug/images/train]
+val: [sim_m2m4/images/val]
+
+names:
+  0: traffic_light     # M1 신호등 (1클래스, 색은 후처리)
+  1: marker_left       # M2 갈림길 A (좌)
+  2: marker_right      # M2 갈림길 B (우)
+  3: parking_sign      # M4 주차 (원형 P)
+  4: pedestrian_sign   # M3 보행자
+  5: slow_sign         # M5 서행
+  6: bump_sign         # M5 방지턱
+
+nc: 7

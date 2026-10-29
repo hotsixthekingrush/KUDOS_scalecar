@@ -1,0 +1,33 @@
+# auto_labeler 대상 목록 — 새 맵 v2 (KUDOS_Autorace2026_Gazebo, track_2026.world) 기준, 10/29
+#
+# ★ 이 파일은 갈림길 표지판이 "B" 일 때용. A 일 때는 targets_v2_A.yaml
+#   갈림길 그림은 Gazebo 실행 때 한 번 정해진다 (arena.launch.py branch_sign:=A|B|random).
+#   collect_data_v2.launch.py 가 world 파일을 읽어서 A/B 파일을 자동으로 고른다.
+#
+# classes 순서 = 클래스 ID = dataset_v2.yaml 의 names 순서. 순서는 바꾸지 말고 뒤에만 추가.
+#
+# target 항목
+#   gazebo_name : 월드 <model name="...">
+#   size        : 라벨 박스 크기 [x, y, z] (m), 모델 좌표계
+#   offset      : 모델 원점 -> 박스 중심 (m), 모델 좌표계
+#   front       : 앞면 방향 축. 뒤에서 보면 라벨 안 붙임 (표지판 필수)
+
+classes:
+  - traffic_light     # 0  M1 신호등 (색은 박스 안에서 따로 판정)
+  - marker_left       # 1  M2 갈림길 A (좌)
+  - marker_right      # 2  M2 갈림길 B (우)
+  - parking_sign      # 3  M4 주차 (원형 P)
+  - pedestrian_sign   # 4  M3 보행자 — 그림 크기 확인 후 target 추가
+  - slow_sign         # 5  M5 서행   — 월드에 아직 없음
+  - bump_sign         # 6  M5 방지턱 — 그림 크기 확인 후 target 추가
+
+targets:
+  # 갈림길 표지판: 흰 원판(지름 0.24) 앞에 붙은 그림(printed_face, round_face.dae) 지름 0.224
+  #   그림 위치 = 모델 원점에서 +x 0.0305. 모델 yaw 0 → 월드 +x 쪽(달려오는 차)을 봄
+  - {class: marker_right, gazebo_name: branch_sign_panel, size: [0.01, 0.224, 0.224], offset: [0.0305, 0, 0], front: '+x'}
+
+  # 주차 표지판: 같은 구조. 모델 yaw pi → 월드 -x 쪽을 봄 (모델 기준으로는 그대로 +x)
+  - {class: parking_sign, gazebo_name: parking_sign_panel, size: [0.01, 0.224, 0.224], offset: [0.0305, 0, 0], front: '+x'}
+
+  # 신호등 본체 0.045 x 0.12 x 0.205 (차양·기둥 제외). 램프가 모델 +x 쪽
+  - {class: traffic_light, gazebo_name: traffic_light, size: [0.045, 0.12, 0.205], front: '+x'}
