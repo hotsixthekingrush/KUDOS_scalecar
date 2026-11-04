@@ -40,6 +40,7 @@ Gazebo 는 모든 물체의 3D 위치·크기를 알고 있다. 물체의 3D 박
 """
 
 import os
+import json
 import time
 import random
 
@@ -144,6 +145,9 @@ class AutoLabeler(Node):
         p('occlusion_tol_m', 0.05)
         p('label_format', 'polygon')    # polygon | box
         p('draw_debug', True)
+        # 사진마다 카메라 자세·내부값을 meta/<이름>.json 으로 저장 (11/4).
+        # 나중에 대상(횡단보도 등)을 추가하면 relabel 로 다시 수집하지 않고 라벨만 덧붙일 수 있다
+        p('save_meta', True)
         # 장면이 바뀌는 순간(순간이동·마커 교체)에는 이미지와 물체 위치가 어긋날 수 있다.
         # viewpoint_sampler / domain_randomizer 가 이 토픽으로 저장을 잠시 멈춘다.
         p('enable_topic', '/auto_labeler/enable')
@@ -167,13 +171,14 @@ class AutoLabeler(Node):
         self.occ_tol = float(g('occlusion_tol_m'))
         self.label_fmt = g('label_format')
         self.draw_debug = bool(g('draw_debug'))
+        self.save_meta = bool(g('save_meta'))
         self.enabled = True
         self.enable_stamp_ns = 0   # 저장 재개 시각(시뮬 시간). 이보다 먼저 찍힌 사진은 버림
 
         self.class_names, self.targets = load_targets(tfile)
         self.get_logger().info('대상 %d개 로드: %s' % (len(self.targets), tfile))
 
-        for sub in ('images/all', 'labels/all', 'debug'):
+        for sub in ('images/all', 'labels/all', 'debug', 'meta'):
             os.makedirs(os.path.join(self.out_dir, sub), exist_ok=True)
 
         self.bridge = CvBridge()
@@ -348,6 +353,10 @@ class AutoLabeler(Node):
         cv2.imwrite(os.path.join(self.out_dir, 'images/all', stem + '.jpg'), frame)
         with open(os.path.join(self.out_dir, 'labels/all', stem + '.txt'), 'w') as f:
             f.write('\n'.join(geo.yolo_line(c, pl, w, h, self.label_fmt) for c, pl in labels))
+        if self.save_meta:
+            with open(os.path.join(self.out_dir, 'meta', stem + '.json'), 'w') as f:
+                json.dump({'T_cam_world': T_cam_world.tolist(), 'K': self.K.tolist(), 'w': w, 'h': h,
+                           'stamp_ns': stamp_ns, 'classes': self.class_names}, f)
 
         if self.draw_debug and labels:
             dbg = frame.copy()

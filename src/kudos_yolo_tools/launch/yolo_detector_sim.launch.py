@@ -1,7 +1,8 @@
 """
 Gazebo 에서 YOLO 추론 노드 실행 (판단팀 연동 테스트용)
 
-  ros2 launch kudos_yolo_tools yolo_detector_sim.launch.py weights:=/절대경로/best.pt
+  ros2 launch kudos_yolo_tools yolo_detector_sim.launch.py            (기본 모델 models/best_sim_full_1104.pt)
+  ros2 launch kudos_yolo_tools yolo_detector_sim.launch.py weights:=/절대경로/다른모델.pt
   rqt_image_view /perception/yolo_debug
   ros2 topic echo /perception/mission_objects
 """
@@ -17,7 +18,9 @@ def generate_launch_description():
     cfg = os.path.join(get_package_share_directory('kudos_yolo_tools'),
                        'config', 'yolo_detector_sim.yaml')
     return LaunchDescription([
-        DeclareLaunchArgument('weights', description='best.pt 절대경로'),
+        DeclareLaunchArgument('weights', default_value=os.path.join(
+            get_package_share_directory('kudos_yolo_tools'), 'models', 'best_sim_full_1104.pt'),
+            description='모델 경로 (기본: 11/4 시뮬 미션 1~5 모델, 횡단보도 제외)'),
         Node(package='kudos_yolo_tools', executable='yolo_detector_node.py',
              name='yolo_detector_node', output='screen',
              parameters=[cfg, {'weights': LaunchConfiguration('weights'),

@@ -12,6 +12,7 @@ find_package(ament_cmake REQUIRED)
 #   image_augment.py, train_yolo.py, split_dataset.py
 install(PROGRAMS
   scripts/yolo_geometry.py
+  scripts/light_color.py
   scripts/yolo_detector_node.py
   scripts/split_dataset.py
   scripts/viewpoint_sampler.py
@@ -19,10 +20,12 @@ install(PROGRAMS
   scripts/domain_randomizer.py
   scripts/image_augment.py
   scripts/train_yolo.py
+  scripts/world_targets.py
+  scripts/mission_check.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
-install(DIRECTORY config launch
+install(DIRECTORY config launch models
   DESTINATION share/${PROJECT_NAME}
 )
 

@@ -16,18 +16,28 @@ yolo_detector_node.py
   - 연속 프레임 확인(채터링 방지)은 판단 모듈 책임. 여기서는 위치값 흔들림만
     지수이동평균(EMA)으로 줄인다.
 
+[2026 규정 기준 (11/2, 판단 세진님 요청)]
+  클래스: PEDESTRIAN_SIGN, SIGN_A, SIGN_B, TRAFFIC_LIGHT(+light_color), PARKING_SIGN,
+          LIMO(보이는 것 전부), BUMP_SIGN, SLOW_SIGN, SLOW_GUIDE_LINE
+  angle_valid / angle_rad 는 메시지에서 삭제됨 (차단기 없음)
+
 [거리 추정 — 미션마다 다름]
-  crosswalk     : 박스 하단 중앙 픽셀의 광선 ∩ 바닥평면  (IPM 과 같은 원리, 깊이 불필요)
-                  → x_m = 횡단보도 "앞쪽 끝"까지 거리
-  그 외 표지판류 : 정렬된 깊이의 박스 중앙부 값  → 실패 시 알려진 실제 높이로 역산
-  gate_bar      : 위와 동일 + seg 모델이면 마스크로 화면상 기울기(angle_rad)
+  crosswalk       : 박스 하단 ∩ 바닥 → x_m = 횡단보도의 차에 가까운 끝까지 거리. EMA 없음.
+                    화면 맨 아래에 닿으면 position_valid=false (판단이 odom 으로 이어서 계산)
+                    미션 진입 신호 아님 — 신호등·보행자 미션의 정지 기준 (11/2)
+  slow_guide_line : 박스 하단 중앙 픽셀의 광선 ∩ 바닥평면 (깊이 불필요)
+                    → x_m = 유도선 가까운 끝(시작점)까지 거리. 박스가 화면 맨 아래에 닿으면
+                      이미 올라탄 것 → position_valid=false
+  limo            : 깊이 → 실패 시 박스 하단 ∩ 바닥 (차 바퀴가 바닥에 닿아 있으므로 크기 역산보다 정확)
+  그 외 표지판류   : 정렬된 깊이의 박스 중앙부 값 → 실패 시 알려진 실제 높이로 역산
+  traffic_light   : 위와 같고, 박스 안 램프 색으로 light_color (light_color.py)
 
 [모델]
   weights 에 .pt(개발 PC) / .engine(Jetson TensorRT) 모두 가능.
   클래스 번호는 model.names 의 "이름"으로 MissionObject 상수에 매핑하므로
   학습 시 클래스 순서가 달라도 잘못된 번호가 나가지 않는다. (모르는 이름은 무시+경고)
 
-[Foxy 호환] Python 3.8 문법만 사용.
+[호환] Python 3.8 문법만 사용 (실차 Humble 이어도 문제없음).
 
 실행:
   ros2 run kudos_yolo_tools yolo_detector_node.py --ros-args \
@@ -49,6 +59,7 @@ import tf2_ros
 from tf2_ros import TransformException
 
 import yolo_geometry as geo
+import light_color as lc
 
 try:
     from ar_msgs.msg import MissionObject, MissionObjectArray
@@ -57,17 +68,27 @@ except ImportError:
     MissionObjectArray = None
 
 
-# 학습 클래스 이름 -> MissionObject 상수 이름
+# 학습 클래스 이름 -> MissionObject 상수 이름 (2026 규정, ar_msgs feat/decision-2026)
+#   학습 데이터(dataset_v2.yaml)는 A/B 를 marker_left/right 이름으로 쓰고 있어 둘 다 받는다.
 CLASS_TO_CONST = {
-    'crosswalk': 'CROSSWALK',
-    'marker_left': 'MARKER_LEFT',
-    'marker_right': 'MARKER_RIGHT',
-    'gate_bar': 'GATE_BAR',
+    'pedestrian_sign': 'PEDESTRIAN_SIGN',
+    'sign_a': 'SIGN_A', 'marker_left': 'SIGN_A',
+    'sign_b': 'SIGN_B', 'marker_right': 'SIGN_B',
+    'traffic_light': 'TRAFFIC_LIGHT',
     'parking_sign': 'PARKING_SIGN',
-    'dynamic_car': 'DYNAMIC_CAR',
+    'limo': 'LIMO',
+    'bump_sign': 'BUMP_SIGN',
+    'slow_sign': 'SLOW_SIGN',
+    'slow_guide_line': 'SLOW_GUIDE_LINE',
+    'crosswalk': 'CROSSWALK',            # 11/2 추가 (=9). 신호등·보행자 미션의 정지 기준
 }
 # 한 화면에 여러 개 나올 수 있는 클래스 (나머지는 가장 확실한 1개만 보냄)
-MULTI_INSTANCE = {'dynamic_car'}
+MULTI_INSTANCE = {'limo'}
+# 바닥에 그려진 것 → 박스 하단 ∩ 바닥으로 거리
+GROUND_CLASSES = {'slow_guide_line', 'crosswalk'}
+# 위치 EMA 를 하지 않는 클래스 — 다가가는 중이라 평균을 내면 거리가 늦게 나옴
+#   (ema_alpha 0.5 면 약 2 cm 늦음). 판단이 3 cm 안에 세우므로 원값 그대로 보냄
+NO_EMA = {'crosswalk'}
 
 
 def tf_to_T(tf_msg):
@@ -101,8 +122,22 @@ class YoloDetectorNode(Node):
         # 클래스별 신뢰도 문턱 — 이름:값 문자열 목록 (예: "marker_left:0.6")
         p('conf_per_class', [''])
         # 깊이 실패 시 크기로 거리 역산할 때 쓰는 실제 높이 (m) — 이름:값  [실측필요]
-        p('object_height_m', ['marker_left:0.16', 'marker_right:0.16',
-                              'parking_sign:0.16', 'dynamic_car:0.20'])
+        p('object_height_m', ['marker_left:0.08', 'marker_right:0.08', 'sign_a:0.08', 'sign_b:0.08',
+                              'parking_sign:0.08', 'pedestrian_sign:0.08',
+                              'slow_sign:0.08', 'bump_sign:0.08', 'traffic_light:0.205'])
+        # 화면 가장자리에 닿아 잘린 표지판은 버림 (잘린 A/B 가 P 처럼 보이는 경우 확인, 10/8). 0 = 끔
+        p('edge_reject_px', 4)
+        p('edge_reject_classes', ['marker_left', 'marker_right', 'sign_a', 'sign_b', 'parking_sign'])
+        p('light_s_min', 90)        # 신호등 색 판정: 켜진 램프로 볼 최소 채도
+        p('light_v_min', 150)       #                 최소 밝기
+        # 신호등 모양 검사 (11/4, M1 광고 모니터 대응). 화면 속 그림 신호등·원은 크기나 비율이 다름
+        #   실제 본체 12 x 20.5 cm → 세로/가로 1.71. 깊이가 있으면 박스 높이로 실제 높이(m)를 계산해 검사
+        #   통과한 후보 중 가장 확실한 1개를 보냄 (예전: 무조건 conf 최고 1개)
+        p('light_check', True)
+        p('light_aspect_min', 1.2)  # 박스 세로/가로
+        p('light_aspect_max', 3.0)
+        p('light_h_min_m', 0.13)    # 박스 높이 x 깊이 / fy 로 구한 실제 높이 (m)
+        p('light_h_max_m', 0.30)
         p('ground_z', 0.0)          # base_link 기준 바닥 높이. ground_frame 을 찾으면 자동으로 덮어씀
         p('ground_frame', 'base_footprint')   # 바닥에 붙은 프레임. '' 이면 ground_z 그대로 사용
         p('max_depth_m', 3.0)       # DaBai 깊이 유효거리 ~3m
@@ -128,6 +163,14 @@ class YoloDetectorNode(Node):
         self.ema_alpha = float(g('ema_alpha'))
         self.ema_reset = float(g('ema_reset_sec'))
         self.publish_debug = bool(g('publish_debug'))
+        self.edge_px = int(g('edge_reject_px'))
+        self.edge_classes = set(x for x in g('edge_reject_classes') if x)
+        self.light_s_min = int(g('light_s_min'))
+        self.light_v_min = int(g('light_v_min'))
+        self.light_check = bool(g('light_check'))
+        self.light_aspect = (float(g('light_aspect_min')), float(g('light_aspect_max')))
+        self.light_h = (float(g('light_h_min_m')), float(g('light_h_max_m')))
+        self.light_rejected = 0
 
         # --- 모델 로드 ---
         from ultralytics import YOLO
@@ -141,8 +184,15 @@ class YoloDetectorNode(Node):
             if const is None:
                 self.get_logger().warn('모델 클래스 "%s" 는 MissionObject 에 없음 → 무시' % nm)
                 continue
+            if not hasattr(MissionObject, const):
+                self.get_logger().warn('MissionObject 에 %s 상수가 없음 (ar_msgs 옛 버전?) → "%s" 무시'
+                                       % (const, nm))
+                continue
             self.cls_map[int(i)] = (nm, int(getattr(MissionObject, const)))
         self.min_conf = min([self.conf_default] + list(self.conf_per_class.values()))
+        self.has_light = hasattr(MissionObject(), 'light_color')
+        if not self.has_light:
+            self.get_logger().warn('MissionObject 에 light_color 필드가 없음 → 신호등 색은 안 보냄')
         self.get_logger().info('모델 로드: %s | 클래스 %s' % (weights, self.names))
 
         # --- 통신 ---
@@ -236,14 +286,15 @@ class YoloDetectorNode(Node):
             return
         self.last_stamp = msg.header.stamp
         t_start = time.time()
-        if self.K is None:
-            self.get_logger().warn('CameraInfo 미수신', throttle_duration_sec=5.0)
-            return
-
         frame = self.bridge.imgmsg_to_cv2(msg, 'bgr8')
         h, w = frame.shape[:2]
-        T_base_cam = self.get_T_base_cam(self.cam_frame_param or msg.header.frame_id)
-        self.update_ground_z()
+        if self.K is None:
+            # 검출 결과는 계속 보낸다(빈 배열 포함). 위치만 position_valid=false
+            self.get_logger().warn('CameraInfo 미수신 → 위치 없이 발행', throttle_duration_sec=5.0)
+            T_base_cam = None
+        else:
+            T_base_cam = self.get_T_base_cam(self.cam_frame_param or msg.header.frame_id)
+            self.update_ground_z()
 
         depth = None
         if self.latest_depth is not None:
@@ -260,7 +311,8 @@ class YoloDetectorNode(Node):
         self.stat_ms += (time.time() - t0) * 1000.0
         self.stat_n += 1
 
-        dets = self.collect(res)
+        rejected = []
+        dets = self.collect(res, w, h, depth, rejected)
         out = MissionObjectArray()
         out.header.stamp = msg.header.stamp          # 원본 영상 촬영 시각 그대로 (판단 쪽 지연 보정용)
         out.header.frame_id = self.base_frame
@@ -274,14 +326,16 @@ class YoloDetectorNode(Node):
             obj.position_source = MissionObject.POS_NONE
             xy, src = self.estimate_position(d, depth, T_base_cam, h)
             if xy is not None:
-                if d['name'] not in MULTI_INSTANCE:
+                if d['name'] not in MULTI_INSTANCE and d['name'] not in NO_EMA:
                     xy = self.smooth(d['name'], xy, now)
                 obj.position_valid = True
                 obj.x_m, obj.y_m = float(xy[0]), float(xy[1])
                 obj.position_source = src
-            if d.get('angle') is not None:
-                obj.angle_valid = True
-                obj.angle_rad = float(d['angle'])
+            color = None
+            if d['name'] == 'traffic_light':
+                color, why = lc.classify(frame, d['box'], self.light_s_min, self.light_v_min)
+                if self.has_light:
+                    obj.light_color = int(color)
             out.objects.append(obj)
 
             if dbg is not None:
@@ -290,10 +344,17 @@ class YoloDetectorNode(Node):
                 txt = '%s %.2f' % (d['name'], d['conf'])
                 if obj.position_valid:
                     txt += ' x=%.2f y=%.2f' % (obj.x_m, obj.y_m)
-                if obj.angle_valid:
-                    txt += ' %.0fdeg' % np.degrees(obj.angle_rad)
+                if color is not None:
+                    txt += ' ' + lc.NAMES[color]
                 cv2.putText(dbg, txt, (x1, max(y1 - 5, 12)),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 255), 1)
+
+        if dbg is not None:
+            for d, why in rejected:   # 모양 검사에서 버린 신호등 후보 (회색)
+                x1, y1, x2, y2 = [int(v) for v in d['box']]
+                cv2.rectangle(dbg, (x1, y1), (x2, y2), (150, 150, 150), 1)
+                cv2.putText(dbg, 'X light %.2f %s' % (d['conf'], why), (x1, min(y2 + 14, h - 4)),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.4, (150, 150, 150), 1)
 
         self.pub.publish(out)
         if dbg is not None:
@@ -315,31 +376,65 @@ class YoloDetectorNode(Node):
                                       sum(a) / len(a), max(a)))
             self.win = []
 
-    def collect(self, res):
-        """YOLO 결과 -> 클래스별 문턱 적용, 단일 인스턴스 클래스는 최고 신뢰도 1개만"""
+    def collect(self, res, img_w, img_h, depth=None, rejected=None):
+        """YOLO 결과 -> 클래스별 문턱 적용, 가장자리에 잘린 표지판 제거,
+        단일 인스턴스 클래스는 최고 신뢰도 1개만 (LIMO 는 전부).
+        신호등은 모양 검사(light_shape_ok)를 통과한 후보 중 최고 신뢰도 1개."""
         if res.boxes is None or len(res.boxes) == 0:
             return []
         xyxy = res.boxes.xyxy.cpu().numpy()
         conf = res.boxes.conf.cpu().numpy()
         cls = res.boxes.cls.cpu().numpy().astype(int)
-        masks = res.masks.xy if getattr(res, 'masks', None) is not None else None
-
+        e = self.edge_px
         best = {}
         multi = []
+        lights = []
         for i in range(len(cls)):
             if int(cls[i]) not in self.cls_map:
                 continue
             name, const = self.cls_map[int(cls[i])]
             if conf[i] < self.conf_per_class.get(name, self.conf_default):
                 continue
+            x1, y1, x2, y2 = xyxy[i]
+            if e > 0 and name in self.edge_classes and (
+                    x1 <= e or y1 <= e or x2 >= img_w - e or y2 >= img_h - e):
+                continue
             d = {'name': name, 'const': const, 'conf': float(conf[i]), 'box': xyxy[i]}
-            if name == 'gate_bar' and masks is not None and len(masks[i]) >= 5:
-                d['angle'] = geo.bar_angle_from_points(masks[i])
             if name in MULTI_INSTANCE:
                 multi.append(d)
+            elif name == 'traffic_light' and self.light_check:
+                lights.append(d)
             elif name not in best or d['conf'] > best[name]['conf']:
                 best[name] = d
+        for d in sorted(lights, key=lambda x: -x['conf']):
+            ok, why = self.light_shape_ok(d['box'], depth, img_w, img_h)
+            if ok:
+                best['traffic_light'] = d
+                break
+            self.light_rejected += 1
+            if rejected is not None:
+                rejected.append((d, why))
+            self.get_logger().info('신호등 후보 버림 (conf %.2f, %s) — 광고 화면 등. 누적 %d'
+                                   % (d['conf'], why, self.light_rejected), throttle_duration_sec=2.0)
         return list(best.values()) + multi
+
+    def light_shape_ok(self, box, depth, img_w, img_h):
+        """신호등 박스가 실제 신호등 모양·크기인지. 반환 (통과 여부, 이유 문자열)"""
+        x1, y1, x2, y2 = [float(v) for v in box]
+        bw, bh = max(x2 - x1, 1.0), max(y2 - y1, 1.0)
+        # 화면 가장자리에 잘린 박스는 비율·크기를 믿을 수 없음 → 검사 없이 통과
+        if x1 <= 2 or y1 <= 2 or x2 >= img_w - 2 or y2 >= img_h - 2:
+            return True, 'edge'
+        aspect = bh / bw
+        if not (self.light_aspect[0] <= aspect <= self.light_aspect[1]):
+            return False, 'ratio %.2f' % aspect
+        if depth is not None and self.K is not None:
+            z = geo.robust_box_depth(depth, x1, y1, x2, y2)
+            if z is not None and z <= self.max_depth:
+                h_m = bh * z / float(self.K[1, 1])
+                if not (self.light_h[0] <= h_m <= self.light_h[1]):
+                    return False, 'h %.2fm' % h_m
+        return True, ''
 
     def estimate_position(self, d, depth, T_base_cam, img_h):
         """반환: ((x, y) base_link, position_source) 또는 (None, POS_NONE)"""
@@ -348,8 +443,8 @@ class YoloDetectorNode(Node):
         x1, y1, x2, y2 = [float(v) for v in d['box']]
         u = (x1 + x2) / 2.0
 
-        if d['name'] == 'crosswalk':
-            # 박스 하단 = 횡단보도의 앞쪽 끝. 화면 맨 아래에 닿았으면 이미 밟고 있는 중
+        if d['name'] in GROUND_CLASSES:
+            # 박스 하단 = 유도선 가까운 끝(시작점). 화면 맨 아래에 닿았으면 이미 올라탄 중
             if y2 >= img_h - 2:
                 return None, MissionObject.POS_NONE
             xy = geo.ray_ground_intersection(u, y2, self.K, T_base_cam, self.ground_z)
@@ -363,6 +458,11 @@ class YoloDetectorNode(Node):
                 src = MissionObject.POS_DEPTH
             else:
                 z = None
+        if z is None and d['name'] == 'limo' and y2 < img_h - 2:
+            # 차는 바닥에 서 있음 → 박스 하단(바퀴) ∩ 바닥. 크기 역산보다 y 가 정확
+            xy = geo.ray_ground_intersection(u, y2, self.K, T_base_cam, self.ground_z)
+            if xy:
+                return xy, MissionObject.POS_GROUND
         if z is None and d['name'] in self.obj_h:
             z = geo.depth_from_size(y2 - y1, self.obj_h[d['name']], self.K[1, 1])
             src = MissionObject.POS_SIZE

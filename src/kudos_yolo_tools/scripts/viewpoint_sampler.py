@@ -102,6 +102,8 @@ class ViewpointSampler(Node):
         self.regions = cfg['regions']
         self.avoid = [((float(a['xy'][0]), float(a['xy'][1])), float(a['r']))
                       for a in (cfg.get('avoid') or [])]
+        # 경기장 밖으로 나가지 않게 [xmin, xmax, ymin, ymax] (없으면 검사 안 함, 11/4)
+        self.bounds = [float(v) for v in cfg['bounds']] if cfg.get('bounds') else None
         self.num_poses = int(g('num_poses'))
         self.settle_ns = int(float(g('settle_sim_sec')) * 1e9)
         self.capture_frames = int(g('capture_frames'))
@@ -161,6 +163,8 @@ class ViewpointSampler(Node):
             self.cap_count += 1
 
     def blocked(self, x, y):
+        if self.bounds and not (self.bounds[0] <= x <= self.bounds[1] and self.bounds[2] <= y <= self.bounds[3]):
+            return True
         return any(math.hypot(x - ax, y - ay) < ar for (ax, ay), ar in self.avoid)
 
     def set_labeler(self, on):

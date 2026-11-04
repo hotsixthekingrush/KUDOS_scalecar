@@ -24,14 +24,22 @@ yolo_detector_node:
 
     conf_default: 0.5
     # [튜닝필요] 좌/우 오인식은 곧바로 미션 실패 → 마커는 문턱을 높게
-    conf_per_class: ["marker_left:0.6", "marker_right:0.6"]
+    conf_per_class: ["marker_left:0.7", "marker_right:0.7", "sign_a:0.7", "sign_b:0.7"]  # A/B 좌우 바뀌면 즉시 실패 → 높게
 
     # [실측필요] 깊이 실패 시 거리 역산용 실제 높이 (m). 대회 규격 인쇄물 크기로 바꿀 것
-    object_height_m: ["marker_left:0.16", "marker_right:0.16", "parking_sign:0.16", "dynamic_car:0.20"]
+    object_height_m: ["marker_left:0.08", "marker_right:0.08", "parking_sign:0.08", "pedestrian_sign:0.08", "slow_sign:0.08", "bump_sign:0.08", "traffic_light:0.205"]  # 규정 Ø80 표지판, 신호등 20.5cm
 
     ground_frame: "base_footprint"   # 바닥 높이를 TF 로 자동 계산
     ground_z: 0.0                    # ground_frame TF 가 없을 때만 사용
     max_depth_m: 3.0
     ema_alpha: 0.5
     ema_reset_sec: 0.5
+    edge_reject_px: 4               # 화면 가장자리에 잘린 A/B/P 박스 버림 (0 = 끔)
+    light_s_min: 90                 # 신호등 색: 켜진 램프 최소 채도 [실차 튜닝]
+    light_v_min: 150                #             최소 밝기 [실차 튜닝]
+    light_check: true               # 신호등 모양 검사 (광고 모니터 대응, 11/4). 끄면 예전처럼 conf 최고 1개
+    light_aspect_min: 1.2           # 박스 세로/가로 (실물 20.5/12 = 1.71)
+    light_aspect_max: 3.0
+    light_h_min_m: 0.13             # 깊이로 구한 실제 높이 (m). 실물 0.205
+    light_h_max_m: 0.30
     publish_debug: true  # 대회 때는 false

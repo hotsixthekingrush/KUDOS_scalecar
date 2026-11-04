@@ -1,0 +1,25 @@
+# YOLOv8 데이터셋 — 2026 시뮬 미션 1~5 전체 (11/4)
+#   sim_full = world_targets.py + collect_data_v2.launch.py config_dir:=... 로 모은 것
+#              (신호등·A/B·P·보행자·방지턱 표지판·횡단보도·정차 LIMO 를 같은 사진에서 전부 라벨)
+#   옛 sim_m2m4 는 넣지 않음: 신호등 사진에 횡단보도가 라벨 없이 찍혀 있어 "횡단보도 = 배경" 으로 배움
+#   실사(real_*)는 라벨을 고친 뒤 train 목록에 추가하고, val 은 실사로 바꾸기
+# 클래스 순서는 targets 의 classes 와 같아야 한다. 바꾸지 말고 뒤에만 추가.
+
+path: /home/gyun/yolo_data/v2
+
+train: [sim_full_aug/images/train]
+val: [sim_full/images/val]
+
+names:
+  0: traffic_light     # M1 신호등 (1클래스, 색은 후처리 light_color.py)
+  1: marker_left       # M2 갈림길 A (좌)
+  2: marker_right      # M2 갈림길 B (우)
+  3: parking_sign      # M4 주차 (원형 P)
+  4: pedestrian_sign   # M3 보행자
+  5: slow_sign         # M5 서행 — 시뮬 맵에 없음 (실사로만)
+  6: bump_sign         # M5 방지턱
+  7: limo              # 정차 LIMO (보이는 것 전부)
+  8: slow_guide_line   # M6 — 아직 라벨 없음
+  9: crosswalk         # M1·M3 정지 기준. 박스 하단 = 차에 가까운 끝
+
+nc: 10
