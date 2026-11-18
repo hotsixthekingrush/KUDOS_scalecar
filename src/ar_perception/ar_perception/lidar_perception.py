@@ -1,4 +1,5 @@
 import math
+import json
 import numpy as np
 
 import rclpy
@@ -9,11 +10,15 @@ from rclpy.qos import qos_profile_sensor_data
 from scipy.spatial import cKDTree
 
 from sensor_msgs.msg import LaserScan
-from std_msgs.msg import String, Float32, Float32
+from std_msgs.msg import String
 from geometry_msgs.msg import Point
 from visualization_msgs.msg import Marker, MarkerArray
 
 from ar_msgs.msg import Obstacle, ObstacleArray, WallArray, WallSegment, ParkingGap
+from ar_perception.point_accumulation import DEFAULTS, OdomHistory, PointAccumulator
+
+
+from ar_perception.wall_filter import WALL_DEFAULTS, WallFilter
 
 
 class LidarPerception(Node):
@@ -28,6 +33,20 @@ class LidarPerception(Node):
         # LiDAR mounting position
         self.declare_parameter('lidar_offset_x', 0.0)
         self.declare_parameter('lidar_offset_y', 0.0)
+
+        # Optional static-LIMO refinement; baseline LINE/CIRCLE remains the fallback.
+        self.declare_parameter('use_point_accumulation', True)
+        self.declare_parameter('point_accumulation_debug', True)
+        for name, value in DEFAULTS.items():
+            self.declare_parameter(name, value)
+        self.accumulation_odom = OdomHistory()
+        self.point_accumulator = PointAccumulator()
+        self.accumulation_epoch = 0
+
+        self.declare_parameter('use_wall_filter', False)
+        for name, value in WALL_DEFAULTS.items():
+            self.declare_parameter(name, value)
+        self.wall_filter = WallFilter()
 
         # Self filter
         self.declare_parameter('self_x_min', -0.25)
@@ -65,33 +84,6 @@ class LidarPerception(Node):
         self.declare_parameter('cone_min_points_far', 3)
 
         self.declare_parameter('cone_side_deadband', 0.05)
-
-        #tracking parameter
-    
-        self.declare_parameter('tracking_max_distance', 0.30) #이전-현재 중심 0.3m이내면 같은물체후보
-        self.declare_parameter('dynamic_speed_threshold', 0.10) #0.10m/s이상이면 움직임후보
-        self.declare_parameter('tracking_velocity_alpha', 0.5) 
-        self.declare_parameter('dynamic_confirm_frames', 3) # 3frame연속움직이면동적장애물
-
-        # roundabout center cylinder
-        self.declare_parameter('roundabout_radius_min', 0.15)
-        self.declare_parameter('roundabout_radius_max', 0.40)
-        self.declare_parameter('roundabout_residual_max', 0.03)
-        self.declare_parameter('roundabout_min_points', 10)
-
-        # gate
-        self.declare_parameter('gate_length_min', 0.35)
-        self.declare_parameter('gate_length_max', 1.50)
-        self.declare_parameter('gate_residual_max', 0.03)
-        self.declare_parameter('gate_angle_min_deg', 70.0)
-
-        self.declare_parameter('gate_x_min', 0.20)
-        self.declare_parameter('gate_x_max', 2.50)
-        self.declare_parameter('gate_y_abs_max', 0.60)
-
-        self.declare_parameter('gate_min_points', 5)
-
-        self.declare_parameter('gate_centerline_margin', 0.05)
 
         self.declare_parameter('parking_x_min', 0.0)
         self.declare_parameter('parking_x_max', 2.0)
@@ -145,12 +137,6 @@ class LidarPerception(Node):
             10
         )
 
-        self.pub_gate = self.create_publisher(
-            Float32,
-            '/perception/gate_distance',
-            10
-        )
-
         self.pub_walls = self.create_publisher(
             WallArray,
             '/perception/parking_walls',
@@ -162,6 +148,13 @@ class LidarPerception(Node):
             '/perception/parking_gap',
             10
         )
+
+        # Baseline-vs-refined centers and rejection reasons; existing markers unchanged.
+        self.pub_accumulation_debug = self.create_publisher(
+            String, '/perception/debug/limo_accumulation', 10)
+
+        self.pub_wall_filter_debug = self.create_publisher(
+            String, '/perception/debug/wall_filter', 10)
 
         # ROI debug
         self.pub_debug = self.create_publisher(
@@ -181,10 +174,8 @@ class LidarPerception(Node):
             'LiDAR perception node started.'
         )
 
-        #tracking 상태 저장?
+        # Odometry는 주차 경계 추적을 위해 유지한다.
         self.latest_odom = None #가장 최근 자차 위치 저장
-        self.prev_tracks = [] #이전 lidar frame 장애물들 저장
-        self.prev_track_time = None # 이전 frame 시간 저장
         self.parking_boundaries = []
         self.parking_frame_id = 0
         self.previous_parking_gap = None
@@ -193,8 +184,41 @@ class LidarPerception(Node):
         self.parking_gap_id_counter = 0
         self.active_parking_gap_id = 0
 
+    def refine_limo_centers(self, scan, candidates, obstacle_array):
+        if not self.get_parameter('use_point_accumulation').value:
+            self.point_accumulator.clear()
+            return
+        config = {k: self.get_parameter(k).value for k in DEFAULTS}
+        self.point_accumulator.cfg.update(config)
+        if self.accumulation_epoch != self.accumulation_odom.epoch:
+            self.point_accumulator.clear()
+            self.accumulation_epoch = self.accumulation_odom.epoch
+        stamp = scan.header.stamp.sec + scan.header.stamp.nanosec * 1e-9
+        pose = self.accumulation_odom.at(stamp, config['accumulation_odom_max_age_sec'])
+        sensor = (self.get_parameter('lidar_offset_x').value,
+                  self.get_parameter('lidar_offset_y').value)
+        replacements, diagnostics = self.point_accumulator.process(stamp, pose, sensor, candidates)
+        for index, candidate in replacements.items():
+            obstacle_array.obstacles[index].x = candidate['x']
+            obstacle_array.obstacles[index].y = candidate['y']
+        if self.get_parameter('point_accumulation_debug').value:
+            msg = String()
+            msg.data = json.dumps({'stamp': stamp, 'frame_id': 'base_link',
+                                   'candidates': diagnostics}, allow_nan=False)
+            self.pub_accumulation_debug.publish(msg)
+
     def odom_callback(self, msg):
         self.latest_odom = msg
+        q = msg.pose.pose.orientation
+        roll = math.atan2(2 * (q.w*q.x + q.y*q.z), 1 - 2 * (q.x*q.x + q.y*q.y))
+        pitch = math.asin(max(-1., min(1., 2 * (q.w*q.y - q.z*q.x))))
+        if not all(math.isfinite(v) for v in (q.x, q.y, q.z, q.w)) or max(abs(roll), abs(pitch)) > .15:
+            self.accumulation_odom.samples.clear()
+            self.accumulation_odom.epoch += 1
+            return
+        stamp = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
+        self.accumulation_odom.add(stamp, self.get_odom_pose(),
+                                   (msg.header.frame_id, msg.child_frame_id))
 
     # /odom의 quaternion을 yaw각도로 변환
     def get_odom_pose(self):
@@ -251,173 +275,6 @@ class LidarPerception(Node):
 
         return x_base, y_base
     
-    #tracking
-    def track_obstacles(self, obstacles, stamp):
-        if self.latest_odom is None:
-            for obs in obstacles:
-                obs.vx = 0.0
-                obs.vy = 0.0
-                obs.is_dynamic = False
-            return
-
-        current_time = (
-            float(stamp.sec)
-            + float(stamp.nanosec) * 1e-9
-        )
-
-        max_distance = float(
-            self.get_parameter('tracking_max_distance').value
-        )
-
-        speed_threshold = float(
-            self.get_parameter('dynamic_speed_threshold').value
-        )
-
-        alpha = float(
-            self.get_parameter('tracking_velocity_alpha').value
-        )
-
-        confirm_frames = int(
-            self.get_parameter('dynamic_confirm_frames').value
-        )
-
-        odom_pose = self.get_odom_pose()
-        _, _, yaw = odom_pose
-
-        if self.prev_track_time is None:
-            new_tracks = []
-
-            for obs in obstacles:
-                pos = self.base_to_odom(obs.x, obs.y)
-
-                if pos is None:
-                    continue
-
-                x_odom, y_odom = pos
-
-                obs.vx = 0.0
-                obs.vy = 0.0
-                obs.is_dynamic = False
-
-                new_tracks.append({
-                    'x': x_odom,
-                    'y': y_odom,
-                    'vx': 0.0,
-                    'vy': 0.0,
-                    'dynamic_count': 0,
-                })
-
-            self.prev_tracks = new_tracks
-            self.prev_track_time = current_time
-            return
-
-        dt = current_time - self.prev_track_time
-
-        if dt <= 0.0 or dt > 1.0:
-            self.prev_tracks = []
-            self.prev_track_time = None
-
-            for obs in obstacles:
-                obs.vx = 0.0
-                obs.vy = 0.0
-                obs.is_dynamic = False
-
-            return
-
-        used_prev = set()
-        new_tracks = []
-
-        for obs in obstacles:
-
-            pos = self.base_to_odom(obs.x, obs.y)
-
-            if pos is None:
-                obs.vx = 0.0
-                obs.vy = 0.0
-                obs.is_dynamic = False
-                continue
-
-            x_odom, y_odom = pos
-
-            best_index = None
-            best_distance = float('inf')
-
-            for i, prev in enumerate(self.prev_tracks):
-
-                if i in used_prev:
-                    continue
-
-                dx = x_odom - prev['x']
-                dy = y_odom - prev['y']
-
-                distance = math.hypot(dx, dy)
-
-                if distance < best_distance:
-                    best_distance = distance
-                    best_index = i
-
-            if (
-                best_index is not None
-                and best_distance <= max_distance
-            ):
-                prev = self.prev_tracks[best_index]
-                used_prev.add(best_index)
-
-                raw_vx = (x_odom - prev['x']) / dt
-                raw_vy = (y_odom - prev['y']) / dt
-
-                vx_odom = (
-                    alpha * raw_vx
-                    + (1.0 - alpha) * prev['vx']
-                )
-
-                vy_odom = (
-                    alpha * raw_vy
-                    + (1.0 - alpha) * prev['vy']
-                )
-
-                speed = math.hypot(vx_odom, vy_odom)
-
-                if speed >= speed_threshold:
-                    dynamic_count = prev['dynamic_count'] + 1
-                else:
-                    dynamic_count = 0
-
-                is_dynamic = dynamic_count >= confirm_frames
-
-                c = math.cos(yaw)
-                s = math.sin(yaw)
-
-                vx_base = c * vx_odom + s * vy_odom
-                vy_base = -s * vx_odom + c * vy_odom
-
-                obs.vx = float(vx_base)
-                obs.vy = float(vy_base)
-                obs.is_dynamic = bool(is_dynamic)
-
-                new_tracks.append({
-                    'x': x_odom,
-                    'y': y_odom,
-                    'vx': vx_odom,
-                    'vy': vy_odom,
-                    'dynamic_count': dynamic_count,
-                })
-
-            else:
-                obs.vx = 0.0
-                obs.vy = 0.0
-                obs.is_dynamic = False
-
-                new_tracks.append({
-                    'x': x_odom,
-                    'y': y_odom,
-                    'vx': 0.0,
-                    'vy': 0.0,
-                    'dynamic_count': 0,
-                })
-
-        self.prev_tracks = new_tracks
-        self.prev_track_time = current_time
     # =============================================================
     # Main callback
     # =============================================================
@@ -454,7 +311,7 @@ class LidarPerception(Node):
 
 # ---------------------------------------------------------
 # General perception ROI
-# cone / roundabout / gate용
+# 일반 장애물 및 라바콘 인지용
 # 차량 전방 좌우 전체 영역을 사용한다.
 # ---------------------------------------------------------
 
@@ -536,72 +393,65 @@ class LidarPerception(Node):
             'cone_radius_margin'
         ).value
 
+        wall_enabled = self.get_parameter('use_wall_filter').value
+        if wall_enabled:
+            self.wall_filter.cfg.update({k: self.get_parameter(k).value for k in WALL_DEFAULTS})
+            stamp = scan.header.stamp.sec + scan.header.stamp.nanosec * 1e-9
+            pose = self.accumulation_odom.at(stamp, self.wall_filter.cfg['wall_odom_max_age_sec'])
+            self.wall_filter.update(stamp, pose, filtered_points, self.accumulation_odom.epoch)
+        else:
+            self.wall_filter.clear()
+        wall_diagnostics = []
+        limo_candidates = []
+        # M7: 한 클러스터에서 Obstacle 최대 하나 발행.
+        # 라바콘은 기존 값을 유지하고, LIMO 후보만 차체 중심으로 변환한다.
         for cluster in clusters:
-
             circle = self.fit_circle(cluster)
+            is_cone = self.is_cone_candidate(cluster, circle)
+            limo = None if is_cone else self.estimate_limo_candidate(cluster, circle)
 
-            # 원 피팅이 실패한 cluster는
-            # 지금 단계에서는 Obstacle로 만들지 않는다.
-            if circle is None:
+            # 그 외 클러스터는 차량/라바콘으로 검증되지 않았으므로 발행하지 않는다.
+            if not is_cone and limo is None:
                 continue
 
-            center_x, center_y, radius, residual = circle
-
-            is_cone = self.is_cone_candidate(
-                cluster,
-                circle
-            )
-
-            obstacle = Obstacle()
-
-            obstacle.x = float(center_x)
-            obstacle.y = float(center_y)
-
-            # cone이면 safety margin 추가
-            if is_cone:
-                obstacle.radius = float(
-                    radius + cone_margin
-                )
-            else:
-                obstacle.radius = float(radius)
-
-            obstacle.point_count = len(cluster)
-
-            # 지금 만든 obstacle을 배열에 추가
-            obstacle_array.obstacles.append(obstacle)
-
-        # 모든 obstacle을 만든 뒤 tracking 수행
-        self.track_obstacles(
-            obstacle_array.obstacles,
-            scan.header.stamp
-        )
-
-        roundabout_detected = \
-            self.detect_roundabout_event(clusters)
-
-        if roundabout_detected:
-
-            for i, obstacle in enumerate(
-                obstacle_array.obstacles
-            ):
-
-                if not obstacle.is_dynamic:
+            if limo is not None and wall_enabled:
+                rejected, reason = self.wall_filter.reject(cluster)
+                wall_diagnostics.append(dict(x=float(limo['x']), y=float(limo['y']),
+                                             method=limo['method'], rejected=rejected, reason=reason))
+                if rejected:
                     continue
 
-                speed = math.hypot(
-                    obstacle.vx,
-                    obstacle.vy
-                )
+            obstacle = Obstacle()
+            if limo is not None:
+                obstacle.x = float(limo['x'])
+                obstacle.y = float(limo['y'])
+                obstacle.radius = 0.16
+                limo_candidates.append((len(obstacle_array.obstacles), cluster, limo))
+            else:
+                center_x, center_y, radius, residual = circle
+                obstacle.x = float(center_x)
+                obstacle.y = float(center_y)
+                obstacle.radius = float(radius + cone_margin if is_cone else radius)
 
-                self.get_logger().info(
-                    f'Roundabout dynamic obstacle {i}: '
-                    f'pos=({obstacle.x:.2f}, {obstacle.y:.2f}) | '
-                    f'vx={obstacle.vx:.2f} | '
-                    f'vy={obstacle.vy:.2f} | '
-                    f'speed={speed:.2f} m/s'
-                )
-        # tracking까지 끝난 최종 결과 publish
-        self.pub_obstacles.publish(obstacle_array)   
+            obstacle.point_count = len(cluster)
+            obstacle_array.obstacles.append(obstacle)
+
+        # Refinement never creates/deletes detections or changes cone outputs.
+        self.refine_limo_centers(scan, limo_candidates, obstacle_array)
+
+        # 정적 장애물 인터페이스 유지: 속도 필드만 0으로 채운다.
+        for obstacle in obstacle_array.obstacles:
+            obstacle.vx = 0.0
+            obstacle.vy = 0.0
+            obstacle.is_dynamic = False
+
+        self.pub_obstacles.publish(obstacle_array)
+        if wall_enabled:
+            debug = String()
+            debug.data = json.dumps(dict(stamp=stamp, frame_id='base_link',
+                walls=[dict(endpoints=w.tolist(), source=source) for w, source in self.wall_filter.walls],
+                candidates=wall_diagnostics), allow_nan=False)
+            self.pub_wall_filter_debug.publish(debug)
 
         # ---------------------------------------------------------
         # 8. LiDAR event publish
@@ -609,38 +459,8 @@ class LidarPerception(Node):
         cone_detected, cone_total, cone_left, cone_right = \
             self.detect_cone_event(clusters)
 
-        gate = self.detect_gate_event(
-            clusters
-        )
-
         event = String()
-    
-
-        if gate is not None:
-            event.data = 'gate'
-
-        elif roundabout_detected:
-            event.data = 'roundabout'
-
-        elif cone_detected:
-            event.data = 'cone'
-
-        else:
-            event.data = 'none'
-
-        if gate is not None:
-
-            gate_x, gate_y, gate_length, gate_angle, gate_residual = gate
-
-            gate_distance = Float32()
-            gate_distance.data = float(
-                gate_x
-            )
-
-            self.pub_gate.publish(
-                gate_distance
-            )
-
+        event.data = 'cone' if cone_detected else 'none'
         self.pub_event.publish(event)
 
         self.get_logger().info(
@@ -1043,77 +863,6 @@ class LidarPerception(Node):
             float(residual)
         )
 
-    def is_gate_candidate(
-        self,
-        cluster,
-        line
-    ):
-
-        if line is None:
-            return False
-
-        center_x, center_y, length, angle_deg, residual = line
-
-        length_min = self.get_parameter(
-            'gate_length_min'
-        ).value
-
-        length_max = self.get_parameter(
-            'gate_length_max'
-        ).value
-
-        residual_max = self.get_parameter(
-            'gate_residual_max'
-        ).value
-
-        angle_min = self.get_parameter(
-            'gate_angle_min_deg'
-        ).value
-
-        x_min = self.get_parameter(
-            'gate_x_min'
-        ).value
-
-        x_max = self.get_parameter(
-            'gate_x_max'
-        ).value
-
-        y_abs_max = self.get_parameter(
-            'gate_y_abs_max'
-        ).value
-
-        min_points = self.get_parameter(
-            'gate_min_points'
-        ).value
-
-        centerline_margin = float(
-            self.get_parameter('gate_centerline_margin').value
-        )
-
-        angle_rad = math.radians(angle_deg)
-
-# 선분 길이 중 y 방향으로 뻗은 절반 길이
-        half_y_span = (
-            0.5
-            * length
-            * abs(math.sin(angle_rad))
-        )
-
-# 선분이 차량 중앙선 y=0을 실제로 가로지르는가
-        crosses_centerline = (
-            abs(center_y)
-            <= half_y_span + centerline_margin
-        )
-
-        return (
-            length_min <= length <= length_max
-            and residual <= residual_max
-            and angle_deg >= angle_min
-            and x_min <= center_x <= x_max
-            and abs(center_y) <= y_abs_max
-            and len(cluster) >= min_points
-            and crosses_centerline
-        )
     
     # =============================================================
     # ROI RViz debug
@@ -1205,8 +954,10 @@ class LidarPerception(Node):
             if circle is not None:
 
                 center_x, center_y, radius, residual = circle
+                is_cone = self.is_cone_candidate(cluster, circle)
 
             else:
+                is_cone = False
 
                 center_x, center_y = self.get_cluster_center(
                     cluster
@@ -1253,6 +1004,51 @@ class LidarPerception(Node):
                 point_marker
             )
 
+            # M7: 실제 발행하는 LIMO 후보 중심을 RViz에 표시한다.
+            limo = self.estimate_limo_candidate(cluster, circle)
+            if limo is not None:
+                label = Marker()
+                label.header.stamp = scan.header.stamp
+                label.header.frame_id = 'base_link'
+                label.ns = 'lidar_limo_candidates'
+                label.id = 3000 + cluster_id
+                label.type = Marker.TEXT_VIEW_FACING
+                label.action = Marker.ADD
+                label.pose.position.x = float(limo['x'])
+                label.pose.position.y = float(limo['y'])
+                label.pose.position.z = 0.35
+                label.pose.orientation.w = 1.0
+                label.scale.z = 0.12
+                label.color.r = 0.0
+                label.color.g = 0.8
+                label.color.b = 1.0
+                label.color.a = 1.0
+                label.text = (
+                    f"LIMO? {limo['method']} "
+                    f"L={limo['length']:.2f} e={limo['residual']:.3f}"
+                )
+                marker_array.markers.append(label)
+
+                center_marker = Marker()
+                center_marker.header.stamp = scan.header.stamp
+                center_marker.header.frame_id = 'base_link'
+                center_marker.ns = 'lidar_limo_centers'
+                center_marker.id = 4000 + cluster_id
+                center_marker.type = Marker.SPHERE
+                center_marker.action = Marker.ADD
+                center_marker.pose.position.x = float(limo['x'])
+                center_marker.pose.position.y = float(limo['y'])
+                center_marker.pose.position.z = 0.06
+                center_marker.pose.orientation.w = 1.0
+                center_marker.scale.x = 0.055
+                center_marker.scale.y = 0.055
+                center_marker.scale.z = 0.055
+                center_marker.color.r = 0.0
+                center_marker.color.g = 0.8
+                center_marker.color.b = 1.0
+                center_marker.color.a = 1.0
+                marker_array.markers.append(center_marker)
+
             # -----------------------------------------------------
             # Cluster text
             # -----------------------------------------------------
@@ -1283,9 +1079,9 @@ class LidarPerception(Node):
             if radius is not None:
 
                 text_marker.text = (
-                    f'{cluster_id}\n'
+                    f'{cluster_id} {"CONE" if is_cone else "OTHER"}\n'
                     f'{len(cluster)} pts\n'
-                    f'r={radius:.2f}m'
+                    f'r={radius:.3f}m e={residual:.3f}m'
                 )
 
             else:
@@ -1318,9 +1114,9 @@ class LidarPerception(Node):
 
                 circle_marker.scale.x = 0.015
 
-                circle_marker.color.r = r
-                circle_marker.color.g = g
-                circle_marker.color.b = b
+                circle_marker.color.r = 0.0 if is_cone else 0.6
+                circle_marker.color.g = 1.0 if is_cone else 0.6
+                circle_marker.color.b = 0.0 if is_cone else 0.6
                 circle_marker.color.a = 1.0
 
                 circle_segments = 40
@@ -1364,6 +1160,74 @@ class LidarPerception(Node):
             marker_array
         )
 
+
+    def estimate_limo_candidate(self, cluster, circle=None):
+        """M7 초기 가설: 선형 단일면 또는 비선형 2면 관측의 차체 중심 추정.
+
+        반환값은 확정 차량 ID가 아닌 후보이다. base_link의 원점이 주행 LIMO에
+        가까운 위치라는 전제로, 표면 법선의 부호는 원점에서 멀어지는 쪽을 택한다.
+        """
+        if len(cluster) < 8:
+            return None
+        if circle is None:
+            circle = self.fit_circle(cluster)
+        if self.is_cone_candidate(cluster, circle):
+            return None
+
+        line = self.fit_line(cluster)
+        if line is None:
+            return None
+        _, _, length, _, line_residual = line
+
+        pts = np.asarray(cluster, dtype=float)
+        midpoint = np.mean(pts, axis=0)
+
+        # 단일면: PCA 선분의 두 끝점 사이 중간 위치를 구한다.
+        if 0.15 <= length <= 0.40 and line_residual < 0.015:
+            centered = pts - np.mean(pts, axis=0)
+            _, _, vh = np.linalg.svd(centered, full_matrices=False)
+            tangent = vh[0]
+            projections = centered @ tangent
+            midpoint = np.mean(pts, axis=0) + (
+                0.5 * (float(projections.min()) + float(projections.max()))
+            ) * tangent
+            normal = np.array([-tangent[1], tangent[0]], dtype=float)
+            # 실제 LiDAR 센서 위치를 기준으로 표면 법선 방향 결정
+            sensor = np.array([
+                self.get_parameter('lidar_offset_x').value,
+                self.get_parameter('lidar_offset_y').value
+            ], dtype=float)
+
+            if float(np.dot(midpoint - sensor, normal)) < 0.0:
+                normal = -normal
+            offset = 0.16 if length <= 0.27 else 0.11
+            center = midpoint + offset * normal
+            return {
+                'x': float(center[0]), 'y': float(center[1]),
+                'method': 'LINE', 'length': float(length),
+                'residual': float(line_residual),
+            }
+
+        # 2면 관측: 기존 원 피팅을 그대로 사용하되, 차량 후보에만 적용.
+        # 직선이 아닌지, 실제 x/y 방향으로 퍼진 점들이 있는지 검사한다.
+        if circle is None:
+            return None
+        cx, cy, radius, circle_residual = circle
+        spread_x = float(np.ptp(pts[:, 0]))
+        spread_y = float(np.ptp(pts[:, 1]))
+        if (
+            0.10 <= radius <= 0.40
+            and circle_residual <= 0.04
+            and 0.06 <= spread_x <= 0.45
+            and 0.06 <= spread_y <= 0.45
+            and line_residual >= 0.015
+        ):
+            return {
+                'x': float(cx), 'y': float(cy),
+                'method': 'CIRCLE', 'length': float(length),
+                'residual': float(circle_residual),
+            }
+        return None
 
     def is_cone_candidate(self, cluster, circle):
         if circle is None:
@@ -1420,35 +1284,6 @@ class LidarPerception(Node):
     # 중간 거리에서는 보수적으로 가까운 기준 사용
         return near_points
     
-    def is_roundabout_candidate(self, cluster, circle):
-
-        if circle is None:
-            return False
-
-        center_x, center_y, radius, residual = circle
-
-        radius_min = self.get_parameter(
-            'roundabout_radius_min'
-        ).value
-
-        radius_max = self.get_parameter(
-            'roundabout_radius_max'
-        ).value
-
-        residual_max = self.get_parameter(
-            'roundabout_residual_max'
-        ).value
-
-        min_points = self.get_parameter(
-            'roundabout_min_points'
-        ).value
-
-        return (
-            radius_min <= radius <= radius_max
-            and residual <= residual_max
-            and len(cluster) >= min_points
-            and center_x > 0.0
-        )
 
 
     def detect_cone_event(self, clusters):
@@ -1539,98 +1374,7 @@ class LidarPerception(Node):
         )
 
 
-    def detect_roundabout_event(self, clusters):
 
-        for i, cluster in enumerate(clusters):
-
-            circle = self.fit_circle(cluster)
-
-            if circle is None:
-                continue
-
-            center_x, center_y, radius, residual = circle
-
-            is_roundabout = self.is_roundabout_candidate(
-                cluster,
-                circle
-            )
-
-            self.get_logger().info(
-                f'Roundabout check {i}: '
-                f'x={center_x:.2f} | '
-                f'r={radius:.3f} | '
-                f'residual={residual:.4f} | '
-                f'points={len(cluster)} | '
-                f'candidate={is_roundabout}'
-            )
-
-            if is_roundabout:
-                return True
-
-        return False
-
-    def detect_gate_event(self, clusters):
-
-        best_gate = None
-
-        for i, cluster in enumerate(clusters):
-
-            line = self.fit_line(
-                cluster
-            )
-
-            if line is None:
-                continue
-
-            center_x, center_y, length, angle_deg, residual = line
-
-            candidate = self.is_gate_candidate(
-                cluster,
-                line
-            )
-
-            angle_rad = math.radians(angle_deg)
-
-            half_y_span = (
-                0.5
-                * length
-                * abs(math.sin(angle_rad))
-            )
-
-            centerline_margin = float(
-                self.get_parameter(
-                    'gate_centerline_margin'
-                ).value
-            )
-
-            crosses_centerline = (
-                abs(center_y)
-                <= half_y_span + centerline_margin
-            )
-
-            self.get_logger().info(
-                f'Gate check {i}: '
-                f'x={center_x:.2f} | '
-                f'y={center_y:.2f} | '
-                f'length={length:.2f} | '
-                f'angle={angle_deg:.1f} deg | '
-                f'residual={residual:.4f} | '
-                f'points={len(cluster)} | '
-                f'cross_center={crosses_centerline} | '
-                f'candidate={candidate}'
-            )
-
-            if not candidate:
-                continue
-
-            # 여러 개면 가장 가까운 gate 사용
-            if (
-                best_gate is None
-                or center_x < best_gate[0]
-            ):
-                best_gate = line
-
-        return best_gate
 
     def apply_parking_roi(self, points):
         x_min = self.get_parameter('parking_x_min').value

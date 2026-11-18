@@ -4,6 +4,34 @@ lidar_perception:
     # LiDAR mounting position relative to base_link
     lidar_offset_x: 0.1236
     lidar_offset_y: 0.0
+    # Static LIMO refinement. False preserves baseline obstacle outputs exactly.
+    use_point_accumulation: true
+    point_accumulation_debug: true
+    accumulation_window_sec: 1.0
+    accumulation_max_points: 90
+    accumulation_min_scans: 3
+    accumulation_odom_max_age_sec: 0.06
+    accumulation_track_gap_sec: 0.35
+    accumulation_match_distance: 0.18
+    accumulation_max_center_shift: 0.10
+    accumulation_fit_max_rms: 0.012
+    accumulation_stability_distance: 0.025
+    accumulation_budget_ms: 20.0
+    accumulation_max_fits: 3
+    accumulation_max_tracks: 24
+
+    # Experimental LIMO wall rejection; disabled preserves current behavior.
+    use_wall_filter: false
+    wall_min_length: 0.65
+    wall_min_points: 12
+    wall_fit_distance: 0.025
+    wall_max_point_gap: 0.25
+    wall_candidate_distance: 0.035
+    wall_candidate_fraction: 0.85
+    wall_track_sec: 0.5
+    wall_odom_max_age_sec: 0.06
+    wall_max_range: 4.0
+
     # Self filter
     self_x_min: -0.25
     self_x_max: 0.25
@@ -14,8 +42,8 @@ lidar_perception:
     roi_x_min: 0.1
     roi_x_max: 3.0
 
-    roi_y_min: -1.0
-    roi_y_max: 1.0
+    roi_y_min: -1.2
+    roi_y_max: 1.2
 
     # Euclidean clustering
     cluster_tolerance: 0.07
